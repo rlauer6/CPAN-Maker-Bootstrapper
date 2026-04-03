@@ -1,0 +1,404 @@
+package CPAN::Maker::GitConfigReader;
+
+use strict;
+use warnings;
+
+use Config::Tiny;
+use File::HomeDir;
+
+use parent qw(Class::Accessor::Fast);
+
+__PACKAGE__->follow_best_practice;
+__PACKAGE__->mk_accessors(qw(config));
+
+########################################################################
+sub new {
+########################################################################
+  my ( $class, $file ) = @_;
+
+  # Default to the current user's global .gitconfig if no file is provided
+  $file //= File::HomeDir->my_home . '/.gitconfig';
+
+  my $config = Config::Tiny->read($file)
+    or die "ERROR: Could not read $file: " . Config::Tiny->errstr . "\n";
+
+  return $class->SUPER::new( { config => $config } );
+}
+
+########################################################################
+sub get_value {
+########################################################################
+  my ( $self, $section, $parameter ) = @_;
+
+  return $self->get_config->{$section}->{$parameter};
+}
+
+########################################################################
+sub user_name {
+########################################################################
+  my ($self) = @_;
+  return $self->get_value( 'user', 'name' );
+}
+
+########################################################################
+sub user_github {
+########################################################################
+  my ($self) = @_;
+  return $self->get_value( 'user', 'github' );
+}
+
+########################################################################
+sub user_email {
+########################################################################
+  my ($self) = @_;
+  return $self->get_value( 'user', 'email' );
+}
+
+########################################################################
+sub core_editor {
+########################################################################
+  my ($self) = @_;
+  return $self->get_value( 'core', 'editor' );
+}
+
+########################################################################
+package CPAN::Maker::Bootstrapper;
+########################################################################
+
+use CLI::Simple::Constants qw(:booleans);
+use CLI::Simple::Utils qw(slurp);
+use Data::Dumper;
+use English qw(-no_match_vars);
+use Cwd qw(getcwd abs_path);
+
+use File::Path qw(make_path);
+use File::Copy;
+use File::ShareDir qw(dist_dir);
+
+use parent qw(CLI::Simple);
+
+our $VERSION = '@PACKAGE_VERSION@';
+
+caller or __PACKAGE__->main;
+
+########################################################################
+sub init {
+########################################################################
+  my ($self) = @_;
+
+  my ($dist) = split /[.]/xsm, __PACKAGE__;
+  $dist =~ s/::/-/xmsg;
+
+  $self->set_dist_dir( dist_dir($dist) );
+
+  $self->_init_git_config;
+
+  return;
+}
+
+########################################################################
+sub _init_git_config {
+########################################################################
+  my ($self) = @_;
+
+  # Example usage:
+  my $git_reader = eval { CPAN::Maker::GitConfigReader->new(); };
+
+  if ( !$git_reader ) {
+    warn "WARNING: could not find a .gitconfig file. Using defaults.\n";
+  }
+
+  $self->set_username( $git_reader    ? $git_reader->user_name   : 'anonymouse' );
+  $self->set_email( $git_reader       ? $git_reader->user_email  : 'anonymouse@example.org' );
+  $self->set_github_user( $git_reader ? $git_reader->user_github : q{} );
+
+  return;
+}
+
+########################################################################
+sub cmd_install {
+########################################################################
+  my ($self) = @_;
+
+  die "ERROR: project may already exist! Use --force to overwrite\n"
+    if !$self->get_force && -e 'Makefile';
+
+  my $module_name = $self->get_module;
+
+  die "ERROR: --module is a required argument\n"
+    if !$module_name;
+
+  my $install_dir = abs_path( $self->get_install_dir // getcwd );
+
+  if ( !$install_dir && $module_name ) {
+    $install_dir = $module_name;
+    $install_dir =~ s/::/-/gxsm;
+  }
+
+  my $dist_dir = $self->get_dist_dir;
+
+  my @manifest = split /\n/xsm, slurp("$dist_dir/MANIFEST");
+
+  make_path( $install_dir, "$install_dir/t", "$install_dir/lib", "$install_dir/bin" );
+
+  foreach (@manifest) {
+    copy "$dist_dir/$_", "$install_dir/$_";
+  }
+
+  rename "$install_dir/Makefile.txt", "$install_dir/Makefile";
+
+  my $module_name_arg = sprintf 'MODULE_NAME=%s', $module_name;
+
+  my $pwd = abs_path(getcwd);
+
+  chdir $install_dir;
+
+  system make => $module_name_arg;
+
+  return $SUCCESS;
+}
+
+########################################################################
+sub main {
+########################################################################
+  my %commands = (
+    install => \&cmd_install,
+    default => \&cmd_install,
+  );
+
+  my @option_specs = qw(
+    install-dir|i=s
+    module|m=s
+    email|e=s
+    username|u=s
+    github-user|g=s
+    force|f!
+  );
+
+  my @extra_options = qw(dist_dir);
+
+  my $cli = __PACKAGE__->new(
+    commands      => \%commands,
+    option_specs  => \@option_specs,
+    extra_options => \@extra_options,
+  );
+
+  return $cli->run();
+}
+
+1;
+
+__END__
+
+=pod
+
+=encoding utf8
+
+=head1 NAME
+
+CPAN::Maker::Bootstrapper - Scaffold a new CPAN distribution in one command
+
+=head1 SYNOPSIS
+
+  # Create a new plain Perl module project
+  cpan-maker-bootstrap --module My::New::Module
+
+  # Create a CLI module project (inherits from CLI::Simple)
+  cpan-maker-bootstrap --module My::New::CLI CLI_MODULE=1
+
+  # Install into a specific directory
+  cpan-maker-bootstrap --module My::Module --install-dir ~/git
+
+  # Override git identity
+  cpan-maker-bootstrap --module My::Module --username "Rob Lauer" --email rob@example.org
+
+=head1 DESCRIPTION
+
+C<CPAN::Maker::Bootstrapper> scaffolds a new CPAN distribution directory
+ready to build immediately. It installs a project Makefile, a
+C<buildspec.yml> pre-populated from your git config, stub source and test
+files, and supporting makefiles - then runs C<make> to generate the initial
+artifacts.
+
+The result is a project that can produce a distributable tarball with a
+single additional C<make> invocation, with no manual editing required for
+a standard project layout.
+
+=head1 WORKFLOW
+
+=over 4
+
+=item 1.
+
+B<Scaffold the project>:
+
+  cpan-maker-bootstrap --module My::New::Module
+
+This creates C<My-New-Module/> (or the directory specified by
+C<--install-dir>), copies the scaffold files, and runs C<make
+MODULE_NAME=My::New::Module> to generate the initial source and
+test stubs.
+
+=item 2.
+
+B<Review the generated files> - particularly C<buildspec.yml>, which
+controls how C<make-cpan-dist.pl> builds the distribution. Your git
+identity is filled in automatically but you may want to adjust the
+description or resource URLs before committing.
+
+=item 3.
+
+B<Implement your module> - edit the generated stub in C<lib/> and add
+your dependencies to C<cpanfile> (if needed).
+
+=item 4.
+
+B<Build the distribution>:
+
+  make
+
+This auto-generates C<requires> and C<test-requires> via
+C<scandeps-static.pl>, generates C<README.md> from your POD via
+C<pod2markdown>, and builds the tarball via C<make-cpan-dist.pl>.
+
+=back
+
+=head1 INSTALLED PROJECT FILES
+
+The following files are installed into the project directory:
+
+=over 4
+
+=item * C<Makefile> - the complete build system. Derives all paths and
+names from C<MODULE_NAME>. See L</THE PROJECT MAKEFILE>.
+
+=item * C<buildspec.yml> - generated from the template, pre-populated
+with your module name, git identity, GitHub username, and project URLs.
+
+=item * C<lib/E<lt>Module/PathE<gt>.pm.in> - stub module, populated from
+either C<class-module.pm.tmpl> (default) or C<cli-module.pm.tmpl> (when
+C<CLI_MODULE=1> is set). Contains package declaration, C<$VERSION>,
+and a POD skeleton with your name and email from git config.
+
+=item * C<t/00-E<lt>project-nameE<gt>.t> - minimal smoke test that calls
+C<use_ok> on your module.
+
+=item * C<version.mk> - provides C<make release>, C<make minor>,
+C<make major> version bump targets.
+
+=item * C<release-notes.mk> - provides C<make release-notes> to generate
+a diff and file list against the previous tagged version.
+
+=item * C<ChangeLog> - empty placeholder, required by the distribution.
+
+=back
+
+=head1 THE PROJECT MAKEFILE
+
+The installed Makefile is self-configuring. The only value it requires is
+C<MODULE_NAME>, and it derives everything else:
+
+  MODULE_PATH  - lib/My/New/Module.pm (from MODULE_NAME)
+  PROJECT_NAME - My-New-Module (from MODULE_NAME)
+  TARBALL      - My-New-Module-1.0.0.tar.gz (from PROJECT_NAME + VERSION)
+
+If C<MODULE_NAME> is not supplied on the command line, it is inferred
+from the project directory name.
+
+Key Makefile targets:
+
+=over 4
+
+=item C<make> / C<make all>
+
+Builds the distribution tarball. Generates C<requires>,
+C<test-requires>, and C<README.md> as prerequisites.
+
+=item C<make requires> / C<make test-requires>
+
+Scans source files with C<scandeps-static.pl> and writes the dependency
+files used by C<buildspec.yml>.
+
+=item C<make release> / C<make minor> / C<make major>
+
+Bumps the patch, minor, or major version number in C<VERSION>.
+
+=item C<make release-notes>
+
+Generates a diff, file list, and tarball comparing the current version
+to the previous git tag.
+
+=item C<make clean>
+
+Removes generated files. Does not affect C<buildspec.yml>, C<VERSION>,
+or any C<*.in> source files.
+
+=back
+
+=head1 OPTIONS
+
+=over 4
+
+=item C<--module|-m> MODULE (required)
+
+The Perl module name for the new project, e.g. C<My::New::Module>.
+Used to derive the project directory name, source file path, and tarball
+name.
+
+=item C<--install-dir|-i> DIR
+
+Directory in which to create the project. Defaults to the current working
+directory. The directory is created if it does not exist.
+
+=item C<--username|-u> NAME
+
+Override the author name used in the module stub and C<buildspec.yml>.
+Defaults to C<user.name> from your global git config.
+
+=item C<--email|-e> EMAIL
+
+Override the author email. Defaults to C<user.email> from your global
+git config.
+
+=item C<--github-user|-g> USER
+
+Override the GitHub username used to construct repository URLs in
+C<buildspec.yml>. Defaults to C<user.github> from your global git config.
+
+=item C<--force|-f>
+
+Overwrite an existing project. Without this flag, the command dies if a
+C<Makefile> already exists in the target directory.
+
+=back
+
+=head1 PREREQUISITES
+
+The following tool(s) must be on your C<PATH>:
+
+=over 4
+
+=item * C<git> - used to read global identity config
+
+=back
+
+=head1 SEE ALSO
+
+L<CPAN::Maker> - the distribution builder driven by C<buildspec.yml>
+
+L<CLI::Simple> - the CLI framework used by the bootstrapper itself and
+optionally by generated CLI module stubs
+
+L<CPAN::Maker::GitConfigReader> - the git config reader bundled with
+this distribution, available for use in your own tools
+
+=head1 AUTHOR
+
+Rob Lauer - E<lt>rlauer6@comcast.netE<gt>
+
+=head1 LICENSE
+
+This library is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=cut

@@ -1,0 +1,36 @@
+project:
+  description: CPAN::Maker::Bootstrapper
+  author:
+    name: Rob Lauer
+    mailto: rclauer@gmail.com
+pm_module: CPAN::Maker::Bootstrapper
+min-perl-version: 5.010
+dependencies:
+  requires: requires
+  test_requires: test-requires
+path:
+  pm_module: lib
+  exe_files: bin
+  tests: t
+extra-files:
+  - ChangeLog
+  - share:
+    - README.md
+    - Makefile.txt
+    - buildspec.yml.tmpl
+    - release-notes.mk
+    - version.mk
+    - cli-module.pm.tmpl
+    - class-module.pm.tmpl
+    - test.t.tmpl
+    - MANIFEST
+
+resources:
+  homepage: http://github.com/rlauer6/CPAN-Maker-Bootstrapper.git
+  bugtracker:
+    web: http://github.com/rlauer6/CPAN-Maker-Bootstrapper/issues
+    mailto: rclauer@gmail.com
+  repository:
+    url: git://github.com/rlauer6/CPAN-Maker-Bootstrapper.git
+    web: http://github.com/rlauer6/CPAN-Maker-Bootstrapper.git
+    type: 'git'

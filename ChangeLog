@@ -1,0 +1,21 @@
+Fri Apr  3 06:39:20 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[1.0.0]:
+	* ChangeLog: new
+	* MANIFEST: new
+	* Makefile: new
+	* Makefile.txt: new
+	* README.md: new
+	* VERSION: new
+	* bin/cpan-maker.sh.in: new
+	* buildspec.yml: new
+	* buildspec.yml.tmpl: new
+	* class-module.pm.tmpl: new
+	* cli-module.pm.tmpl: new
+	* lib/CPAN/Maker/Bootstrapper.pm.in: new
+	* release-notes.mk: new
+	* requires: new
+	* t/00-cpan-maker-bootstrapper.t: new
+	* test-requires: new
+	* test.t.tmpl: new
+	* version.mk: new

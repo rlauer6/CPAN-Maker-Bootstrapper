@@ -1,0 +1,7 @@
+CLI::Simple 1.0.11
+CLI::Simple::Constants 1.0.11
+CLI::Simple::Utils 1.0.11
+Class::Accessor::Fast 0.51
+Config::Tiny 2.30
+File::HomeDir 1.006
+File::ShareDir 1.118
