@@ -55,6 +55,14 @@ sub user_email {
 }
 
 ########################################################################
+sub cpan_maker_basedir {
+########################################################################
+  my ($self) = @_;
+
+  return $self->get_value( 'cpan-maker', 'basedir' );
+}
+
+########################################################################
 sub core_editor {
 ########################################################################
   my ($self) = @_;
@@ -66,7 +74,7 @@ package CPAN::Maker::Bootstrapper;
 ########################################################################
 
 use CLI::Simple::Constants qw(:booleans);
-use CLI::Simple::Utils qw(slurp);
+use CLI::Simple::Utils qw(slurp choose);
 use Data::Dumper;
 use English qw(-no_match_vars);
 use Cwd qw(getcwd abs_path);
@@ -93,6 +101,30 @@ sub init {
 
   $self->_init_git_config;
 
+  my $basedir = $self->get_basedir;
+
+  die sprintf "ERROR: basedir [%s] does not exist\n", $basedir
+    if $basedir && !-d $basedir;
+
+  $basedir //= abs_path(getcwd);
+  $self->set_basedir( abs_path($basedir) );
+
+  return;
+}
+
+########################################################################
+sub _find_package_name {
+########################################################################
+  my ($file) = @_;
+
+  open my $fh, '<', $file or return;
+
+  while (<$fh>) {
+    return $1 if /^package\s+([\w:]+)\s*;/xsm;
+  }
+
+  close $fh;
+
   return;
 }
 
@@ -112,6 +144,11 @@ sub _init_git_config {
   $self->set_email( $git_reader       ? $git_reader->user_email  : 'anonymouse@example.org' );
   $self->set_github_user( $git_reader ? $git_reader->user_github : q{} );
 
+  # only if not provided on command line
+  if ( !$self->get_basedir ) {
+    $self->set_basedir( $git_reader ? $git_reader->cpan_maker_basedir : q{} );
+  }
+
   return;
 }
 
@@ -120,40 +157,73 @@ sub cmd_install {
 ########################################################################
   my ($self) = @_;
 
-  die "ERROR: project may already exist! Use --force to overwrite\n"
-    if !$self->get_force && -e 'Makefile';
-
   my $module_name = $self->get_module;
+
+  my $stub = $self->get_stub;
+
+  if ( !$module_name && $stub && -f $stub ) {
+    my $package_name = _find_package_name($stub);
+
+    if ($package_name) {
+      ( my $stub_as_module = $stub ) =~ s{/}{::}xsmg;
+      $stub_as_module =~ s/\.pm(?:\.in)?$//xsm;
+
+      if ( $stub_as_module =~ /$package_name/xsm ) {
+        $module_name = $package_name;
+      }
+      else {
+        die "ERROR: cannot derive module name - package '$package_name' " . "does not match stub path '$stub'\n";
+      }
+    }
+  }
 
   die "ERROR: --module is a required argument\n"
     if !$module_name;
 
-  my $install_dir = abs_path( $self->get_install_dir // getcwd );
+  my $installdir = $self->get_installdir;
 
-  if ( !$install_dir && $module_name ) {
-    $install_dir = $module_name;
-    $install_dir =~ s/::/-/gxsm;
+  if ( !$installdir && $module_name ) {
+    $installdir = $module_name;
+    $installdir =~ s/::/-/gxsm;
+    $installdir = sprintf '%s/%s', $self->get_basedir, $installdir;
+    $self->set_installdir($installdir);
   }
+
+  die "ERROR: Found '$installdir/Makefile' - project may already exist! Use --force to overwrite\n"
+    if !$self->get_force && -e "$installdir/Makefile";
 
   my $dist_dir = $self->get_dist_dir;
 
   my @manifest = split /\n/xsm, slurp("$dist_dir/MANIFEST");
 
-  make_path( $install_dir, "$install_dir/t", "$install_dir/lib", "$install_dir/bin" );
+  make_path( $installdir, "$installdir/t", "$installdir/lib", "$installdir/bin" );
 
   foreach (@manifest) {
-    copy "$dist_dir/$_", "$install_dir/$_";
+    copy "$dist_dir/$_", "$installdir/$_";
   }
 
-  rename "$install_dir/Makefile.txt", "$install_dir/Makefile";
+  rename "$installdir/Makefile.txt", "$installdir/Makefile";
 
   my $module_name_arg = sprintf 'MODULE_NAME=%s', $module_name;
 
   my $pwd = abs_path(getcwd);
 
-  chdir $install_dir;
+  chdir $installdir;
 
-  system make => $module_name_arg;
+  my $stub_arg = choose {
+    return sprintf 'STUB=%s/module.pm.tmpl', $dist_dir
+      if !$self->get_stub;
+
+    return sprintf 'STUB=%s/cli-module.pm.tmpl', $dist_dir
+      if $self->get_stub eq 'cli';
+
+    return sprintf 'STUB=%s', $self->get_stub
+      if -f $self->get_stub;
+
+    die sprintf "ERROR: stub '%s' not found\n", $self->get_stub
+  };
+
+  system make => $module_name_arg, $stub_arg;
 
   return $SUCCESS;
 }
@@ -167,11 +237,13 @@ sub main {
   );
 
   my @option_specs = qw(
-    install-dir|i=s
+    installdir|i=s
+    basedir|b=s
     module|m=s
     email|e=s
     username|u=s
     github-user|g=s
+    stub|s=s
     force|f!
   );
 
@@ -201,16 +273,19 @@ CPAN::Maker::Bootstrapper - Scaffold a new CPAN distribution in one command
 =head1 SYNOPSIS
 
   # Create a new plain Perl module project
-  cpan-maker-bootstrap --module My::New::Module
+  cpan-maker.sh --module My::New::Module
 
   # Create a CLI module project (inherits from CLI::Simple)
-  cpan-maker-bootstrap --module My::New::CLI CLI_MODULE=1
+  cpan-maker.sh --module My::New::CLI --stub cli
+
+  # Use a custom stub
+  cpan-maker.sh --module My::Module --stub /path/to/mystub.pm
 
   # Install into a specific directory
-  cpan-maker-bootstrap --module My::Module --install-dir ~/git
+  cpan-maker.sh --module My::Module --installdir ~/git
 
   # Override git identity
-  cpan-maker-bootstrap --module My::Module --username "Rob Lauer" --email rob@example.org
+  cpan-maker.sh --module My::Module --username "Rob Lauer" --email rob@example.org
 
 =head1 DESCRIPTION
 
@@ -224,6 +299,19 @@ The result is a project that can produce a distributable tarball with a
 single additional C<make> invocation, with no manual editing required for
 a standard project layout.
 
+=head1 SETUP
+
+C<cpan-maker.sh> will read your global F<.gitconfig> file to populate
+some of options used when creating a distribution. If you have a
+GitHub user account add your username:
+
+ git config --global user.github <your-username>
+
+If you typically create projects in one directory, add the C<basedir>
+option:
+
+ git config --global cpan-maker.basedir $HOME/git
+
 =head1 WORKFLOW
 
 =over 4
@@ -232,12 +320,12 @@ a standard project layout.
 
 B<Scaffold the project>:
 
-  cpan-maker-bootstrap --module My::New::Module
+  cpan-maker.sh --module My::New::Module
 
-This creates C<My-New-Module/> (or the directory specified by
-C<--install-dir>), copies the scaffold files, and runs C<make
-MODULE_NAME=My::New::Module> to generate the initial source and
-test stubs.
+This creates C<My-New-Module/> in the directory specified by
+C<--basedir> (or the directory specified by C<--installdir>), copies
+the scaffold files, and runs C<make MODULE_NAME=My::New::Module> to
+generate the initial source and test stubs.
 
 =item 2.
 
@@ -248,10 +336,23 @@ description or resource URLs before committing.
 
 =item 3.
 
+B<Add new components> - as your project grows, add new modules to
+C<lib/> and scripts to C<bin/> as C<.pm.in> and C<.pl.in> files
+respectively. The Makefile discovers them automatically via
+C<find-files> - no manual changes to the Makefile are required. Any
+new C<.pm.in> or C<.pl.in> file will trigger a dependency rescan on
+the next C<make> and be included in the distribution automatically.
+
+Similarly, add new test files to C<t/> as C<.t> files. They will be
+picked up automatically by C<make test-requires> and included in the
+distribution.
+
+=item 4.
+
 B<Implement your module> - edit the generated stub in C<lib/> and add
 your dependencies to C<cpanfile> (if needed).
 
-=item 4.
+=item 5.
 
 B<Build the distribution>:
 
@@ -270,15 +371,23 @@ The following files are installed into the project directory:
 =over 4
 
 =item * C<Makefile> - the complete build system. Derives all paths and
-names from C<MODULE_NAME>. See L</THE PROJECT MAKEFILE>.
+names from C<MODULE_NAME> or your stub file's package name. See L</THE
+PROJECT MAKEFILE>.
 
 =item * C<buildspec.yml> - generated from the template, pre-populated
 with your module name, git identity, GitHub username, and project URLs.
 
 =item * C<lib/E<lt>Module/PathE<gt>.pm.in> - stub module, populated from
 either C<class-module.pm.tmpl> (default) or C<cli-module.pm.tmpl> (when
-C<CLI_MODULE=1> is set). Contains package declaration, C<$VERSION>,
+C<--stub cli> option is used). Contains package declaration, C<$VERSION>,
 and a POD skeleton with your name and email from git config.
+
+I<Note: All source files in C<lib/> and C<bin/> use the C<.pm.in> / C<.pl.in>
+convention. These are the files you edit. The C<.pm> and C<.pl> files are
+derived from them by the pattern rules in the Makefile, which substitute
+C<E<64>PACKAGE_VERSIONE<64>> with the current value of C<VERSION>. Never edit the
+generated C<.pm> or C<.pl> files directly - your changes will be
+overwritten the next time C<make> runs!>
 
 =item * C<t/00-E<lt>project-nameE<gt>.t> - minimal smoke test that calls
 C<use_ok> on your module.
@@ -295,8 +404,8 @@ a diff and file list against the previous tagged version.
 
 =head1 THE PROJECT MAKEFILE
 
-The installed Makefile is self-configuring. The only value it requires is
-C<MODULE_NAME>, and it derives everything else:
+The installed Makefile is self-configuring. It can derive everything
+from C<MODULE_NAME> or the package name inside a custom stub file.
 
   MODULE_PATH  - lib/My/New/Module.pm (from MODULE_NAME)
   PROJECT_NAME - My-New-Module (from MODULE_NAME)
@@ -317,7 +426,15 @@ C<test-requires>, and C<README.md> as prerequisites.
 =item C<make requires> / C<make test-requires>
 
 Scans source files with C<scandeps-static.pl> and writes the dependency
-files used by C<buildspec.yml>.
+files specified in the C<buildspec.yml> file used by C<make-cpan-dist.pl>.
+
+I<Note: By default, any change to your C<.pm.in> files will trigger a
+rescan of your modules for new dependencies. This will add a
+significant delay to when you have many modules and a large number of
+dependencies. You can avoid the scan by setting the environment
+variable C<CPAN_MAKER_SCAN> to any value other than 'ON'.>
+
+ make CPAN_MAKER_SCAN=OFF
 
 =item C<make release> / C<make minor> / C<make major>
 
@@ -339,16 +456,36 @@ or any C<*.in> source files.
 
 =over 4
 
+=item C<--basedir|-b> DIR
+
+Base directory in which to create the projects. Defaults to the
+current working directory when C<--installdir> and C<--basedir> are not
+provided. The directory must exist or the script will throw an
+exception.
+
+I<Note: The C<--basedir> option is used when you do not provide an
+C<--installdir> option. They are mutually exclusive.>
+
+default: pwd
+
 =item C<--module|-m> MODULE (required)
 
 The Perl module name for the new project, e.g. C<My::New::Module>.
-Used to derive the project directory name, source file path, and tarball
-name.
+Used to derive the project directory name, source file path, and
+tarball name. You can omit this option if you provide a stub file
+(C<--stub path>) that contains a package name that is consistent with
+the stub's path. For example, if my package is C<My::App> and the
+module's path contains C<My/App> then the script will assume your
+module name is C<My::App>.
 
-=item C<--install-dir|-i> DIR
+ cpan-maker.sh --stub $HOME/workdir/My/App.pm
+
+=item C<--installdir|-i> DIR
 
 Directory in which to create the project. Defaults to the current working
 directory. The directory is created if it does not exist.
+
+I<Note: C<--installdir> overrides C<--basedir>>.
 
 =item C<--username|-u> NAME
 
@@ -369,6 +506,28 @@ C<buildspec.yml>. Defaults to C<user.github> from your global git config.
 
 Overwrite an existing project. Without this flag, the command dies if a
 C<Makefile> already exists in the target directory.
+
+=item C<--stub|-s> TYPE|PATH
+
+Controls the module stub used to generate the initial C<.pm.in> source
+file. Three forms are accepted:
+
+=over 4
+
+=item * Omitted - uses the default plain class stub (C<class-module.pm.tmpl>).
+
+=item * C<cli> - uses the CLI stub (C<cli-module.pm.tmpl>), which
+inherits from L<CLI::Simple> and includes a skeleton C<main>, C<init>,
+and a placeholder command.
+
+=item * A file path - uses the specified file as the stub. The file
+must exist or the command will die with an error. This allows you to
+supply your own template or bootstrap a project around a module you
+have already started writing. You can omit the C<--module> option if
+you supply your own stub file. See the explanation for the
+C<--module> option for details.
+
+=back
 
 =back
 

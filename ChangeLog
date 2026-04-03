@@ -1,3 +1,26 @@
+Fri Apr  3 10:06:54 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[1.0.1]:
+	* release-notes-1.0.1.md: new
+	* Makefile
+	- prevent regeneration of .pm.in file
+	* VERSION: bump
+	* README.md: generated
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- pod updates
+	(CPAN::Maker::GitConfig::Reader::cpan_maker_basedir): new
+	(init)
+	- set basedir option
+	(_find_package_name): new
+	(_init_git_config): get basedir
+	(cmd_install)
+	- derive module name from stub file
+	- check for Makefile in actuall install directory
+	- set stub to custom, cli or normal stub file, pass STUB to Makefile
+	(main)
+	- add --stub,--basedir options
+	* release-notes.mk: compare staged to last tagged version
+
 Fri Apr  3 06:39:20 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[1.0.0]:

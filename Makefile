@@ -28,6 +28,8 @@ BUILDSPEC_TEMPLATE := $(shell perl -MFile::ShareDir=dist_file -e 'print dist_fil
 
 UNIT_TEST_TEMPLATE := $(shell perl -MFile::ShareDir=dist_file -e 'print dist_file(q{CPAN-Maker-Bootstrapper}, q{test.t.tmpl});' 2>/dev/null || echo test.t.tmpl )
 
+CPAN_MAKER_SCAN ?= ON
+
 define find-files
 $(1) := $(patsubst %.in,%,$(shell find $(2) -type f -name "$(3)"))
 endef
@@ -38,17 +40,17 @@ $(eval $(call find-files,TESTS,t,*.t))
 $(eval $(call find-files,SOURCE_FILES,lib bin,*.p[ml].in))
 
 %.pm: %.pm.in
-	sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
+	@sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
 	    -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' < $< > $@
 
 %.pl: %.pl.in
-	sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
-	    -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' < $< > $@
+	@sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
+	    -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' < $< > $@; \
 	chmod +x $@
 
 %.sh: %.sh.in
-	sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
-	    -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' < $< > $@
+	@sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
+	    -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' < $< > $@; \
 	chmod +x $@
 
 TARBALL = $(PROJECT_NAME)-$(VERSION).tar.gz
@@ -70,25 +72,27 @@ $(TARBALL): $(DEPS)
 	$(MAKE_CPAN_DIST) -b $<
 
 module.pm.tmpl:
-	module_tmpl=$$(CLI_MODULE=$(CLI_MODULE) perl -MFile::ShareDir=dist_file \
-	  -e '$$template=sprintf q{%smodule.pm.tmpl}, defined $$ENV{CLI_MODULE} ? q{cli-} : q{}; print -e $$template ? $$template : dist_file(q{CPAN-Maker-Bootstrapper}, $$template);'); \
-	cp --preserve=all --update=none  $$module_tmpl $@
-	chmod +w $@
+	@if [[ -n "$(STUB)" ]]; then \
+	  cp --preserve=all --update=none $(STUB) $@; \
+	  chmod +w $@; \
+	else \
+	  touch $@; \
+	fi; \
 
 $(MODULE_PATH).in: module.pm.tmpl
-	mkdir -p $$(dirname $@); \
-	sed -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' \
+	@mkdir -p $$(dirname $@); \
+	test -e $@ || sed -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' \
 	    -e 's/[@]GIT_NAME[@]/$(GIT_NAME)/' \
 	    -e 's/[@]GIT_EMAIL[@]/$(GIT_EMAIL)/' < $< > $@
 
 $(UNIT_TEST_NAME): $(UNIT_TEST_TEMPLATE)
-	sed -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' < $< > $@
+	@sed -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' < $< > $@
 
 README.md: $(MODULE_PATH)
-	$(POD2MARKDOWN) $< > $@
+	@$(POD2MARKDOWN) $< > $@
 
 define scan-deps
-	@requires=$$(mktemp); \
+	requires=$$(mktemp); \
 	packages=$$(mktemp); \
 	trap 'rm -f "$$requires" "$$packages" $(1).tmp' EXIT; \
 	for a in $$(find $(2) -name "$(3)"); do \
@@ -104,16 +108,20 @@ define scan-deps
 endef
 
 requires: $(SOURCE_FILES)
-	$(call scan-deps,$@,lib bin,*.p[ml].in)
+	@if [[ "$(CPAN_MAKER_SCAN)" = "ON" ]]; then \
+	  $(call scan-deps,$@,lib bin,*.p[ml].in); \
+	fi
 
 test-requires: $(TESTS)
-	$(call scan-deps,$@,t,*.t)
+	@if [[ "$(CPAN_MAKER_SCAN)" = "ON" ]]; then \
+	  $(call scan-deps,$@,t,*.t); \
+	fi
 
 ChangeLog:
-	touch $@
+	@touch $@
 
 buildspec.yml: $(BUILDSPEC_TEMPLATE)
-	sed -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/g' \
+	@sed -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/g' \
 	    -e 's/[@]GIT_NAME[@]/$(GIT_NAME)/g' \
 	    -e 's/[@]GITHUB_USER[@]/$(GITHUB_USER)/g' \
 	    -e 's/[@]GIT_EMAIL[@]/$(GIT_EMAIL)/g' \
