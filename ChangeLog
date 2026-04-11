@@ -1,3 +1,33 @@
+Fri Apr 10 14:55:23 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[1.0.2]:
+	* release-notes-1.0.2.md: new
+        * README.md: generated
+        * TODO.md: new
+        * VERSION: bump
+	* MANIFEST: + modulino.tmpl, .gitignore
+	* .gitignore: cleaned up, *.diffs, *.lst
+	* buildspec.yml
+	- + .gitignore, modulino.tmpl
+        * Makefile:
+	- new target 'modulino'
+	- requires, test-requires now preserve pinned version and modules marked with '+'
+	- new options make SCAN=off (formerly CPAN_MAKER_SCAN)
+	- make POD=remove, make POD=extract
+	- support requires.skip to avoid adding unwanted modules
+	- script targets more specific (bin/)
+        * TODO.md: new
+        * bin/cpan-maker-bootstrapper.in: new
+        * bin/cpan-maker.sh.in: deleted, replaced with above
+        * modulino.tmpl: new
+        * requires: modified
+        * requires.skip: new
+        * ChangeLog: modified
+        * lib/CPAN/Maker/Bootstrapper.pm.in
+	- updated pod
+	- +help option
+	(cmd_install): class-module.pm.tmpl, not module.pm.tmpl
+
 Fri Apr  3 10:06:54 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[1.0.1]:

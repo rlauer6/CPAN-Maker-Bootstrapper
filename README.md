@@ -5,19 +5,19 @@ CPAN::Maker::Bootstrapper - Scaffold a new CPAN distribution in one command
 # SYNOPSIS
 
     # Create a new plain Perl module project
-    cpan-maker.sh --module My::New::Module
+    cpan-maker-bootstrapper --module My::New::Module
 
     # Create a CLI module project (inherits from CLI::Simple)
-    cpan-maker.sh --module My::New::CLI --stub cli
+    cpan-maker-bootstrapper --module My::New::CLI --stub cli
 
     # Use a custom stub
-    cpan-maker.sh --module My::Module --stub /path/to/mystub.pm
+    cpan-maker-bootstrapper --module My::Module --stub /path/to/mystub.pm
 
     # Install into a specific directory
-    cpan-maker.sh --module My::Module --installdir ~/git
+    cpan-maker-bootstrapper --module My::Module --installdir ~/git
 
     # Override git identity
-    cpan-maker.sh --module My::Module --username "Rob Lauer" --email rob@example.org
+    cpan-maker-bootstrapper --module My::Module --username "Rob Lauer" --email rob@example.org
 
 # DESCRIPTION
 
@@ -33,8 +33,8 @@ a standard project layout.
 
 # SETUP
 
-`cpan-maker.sh` will read your global `.gitconfig` file to populate
-some of options used when creating a distribution. If you have a
+`cpan-maker-bootstrapper` will read your global `.gitconfig` file to populate
+some of the options used when creating a distribution. If you have a
 GitHub user account add your username:
 
     git config --global user.github <your-username>
@@ -48,7 +48,7 @@ option:
 
 1. **Scaffold the project**:
 
-        cpan-maker.sh --module My::New::Module
+        cpan-maker-bootstrapper --module My::New::Module
 
     This creates `My-New-Module/` in the directory specified by
     `--basedir` (or the directory specified by `--installdir`), copies
@@ -70,8 +70,11 @@ the next `make` and be included in the distribution automatically.
     picked up automatically by `make test-requires` and included in the
     distribution.
 
-4. **Implement your module** - edit the generated stub in `lib/` and add
-your dependencies to `cpanfile` (if needed).
+4. **Implement your module** or edit the generated stub in `lib/`. The
+scanner will detect most dependencies automatically on the next
+`make`; see ["Dependencies"](#dependencies) for how to manage entries the scanner
+misses or gets wrong. Review the generated `requires` and
+`test-requires` files.
 5. **Build the distribution**:
 
         make
@@ -79,6 +82,9 @@ your dependencies to `cpanfile` (if needed).
     This auto-generates `requires` and `test-requires` via
     `scandeps-static.pl`, generates `README.md` from your POD via
     `pod2markdown`, and builds the tarball via `make-cpan-dist.pl`.
+
+See ["Pod Stripping"](#pod-stripping) if you want to strip or extract POD from your
+modules before packaging.
 
 # INSTALLED PROJECT FILES
 
@@ -135,11 +141,11 @@ Key Makefile targets:
 
     _Note: By default, any change to your `.pm.in` files will trigger a
     rescan of your modules for new dependencies. This will add a
-    significant delay to when you have many modules and a large number of
+    significant delay when you have many modules and a large number of
     dependencies. You can avoid the scan by setting the environment
-    variable `CPAN_MAKER_SCAN` to any value other than 'ON'._
+    variable `SCAN` to any value other than `ON` (case insensitive)._
 
-        make CPAN_MAKER_SCAN=OFF
+        make SCAN=OFF
 
 - `make release` / `make minor` / `make major`
 
@@ -155,7 +161,11 @@ Key Makefile targets:
     Removes generated files. Does not affect `buildspec.yml`, `VERSION`,
     or any `*.in` source files.
 
-# OPTIONS
+# USAGE
+
+    cpan-maker-bootstrapper options
+
+## Options
 
 - `--basedir|-b` DIR
 
@@ -164,8 +174,8 @@ Key Makefile targets:
     provided. The directory must exist or the script will throw an
     exception.
 
-    _Note: The `--basedir` option is used when you do not provide an
-    `--installdir` option. They are mutually exclusive._
+    _Note: If `--installdir` is provided it takes precedence and
+    `--basedir` is ignored._
 
     default: pwd
 
@@ -179,7 +189,7 @@ Key Makefile targets:
     module's path contains `My/App` then the script will assume your
     module name is `My::App`.
 
-        cpan-maker.sh --stub $HOME/workdir/My/App.pm
+        cpan-maker-bootstrapper --stub $HOME/workdir/My/App.pm
 
 - `--installdir|-i` DIR
 
@@ -224,15 +234,115 @@ Key Makefile targets:
     you supply your own stub file. See the explanation for the
     `--module` option for details.
 
+## Notes
+
+- **Dependencies**
+
+    The `Makefile` will attempt to detect Perl module dependencies by
+    scanning .pm.in and .pl.in files and creating the `requires` and
+    `test-requires` files whenever you run `make`. These files are used
+    by the `make-cpan-dist.pl` utility to specify the dependencies in your
+    CPAN distribution file. You can prevent that by setting the environment
+    variable `SCAN=OFF`. The default is `SCAN=ON`.
+
+    To prevent an entry from being removed by a rescan, prefix the module
+    name with `+`. These entries are sticky and survive all subsequent
+    scans even if the scanner no longer detects them.  To pin a specific
+    version, simply edit the version number in the `requires` file. If
+    the scanner subsequently detects a different version, the Makefile
+    will preserve your pinned version. Note that pinned versions are
+    **never** updated automatically - if you want to adopt a newer version
+    you must edit the file manually.
+
+    In your requires file:
+
+        +Foo::Bar 1.0    # sticky - survives all rescans
+        Baz::Qux  2.5   # version pinned - scanner won't override this version
+
+    _Note: These two mechanisms are independent - `+` controls whether an entry
+    survives rescans, while the version number controls what version is
+    required._
+
+- **Pod Stripping**
+
+    When you package your CPAN distribution you can strip the pod from
+    your modules or you can extract the pod and provide them as separate
+    `.pod` files. There are two `make` environment variables you can set
+    to control that behavior.
+
+    - `make POD=extract`
+
+        `extract` will strip POD from your module and create a `.pod` file
+        containing the stripped POD that will be added to your distribution.
+
+    - `make POD=remove`
+
+        `remove` will strip POD from your module. No POD will be included in
+        the distribution.
+
+- **Skip File**
+
+    Add a `requires.skip` file to exclude modules from the scanned
+    list. Sometimes the scanner may include modules that are optional or
+    modules you just don't want to include as requirements because they
+    are already included in a module you have already required.
+
+    Similarly, `test-requires.skip` excludes modules from the test
+    dependency scan.
+
+    On a clean first run neither `requires` nor `test-requires` exists
+    yet, so the raw scanner output becomes the dependency file - meaning
+    skip list and pins have no effect until the second run.
+
+- **Modulinos**
+
+    A modulino is a Perl file that doubles as a runnable script. The bash
+    script produced by `make modulino` is the wrapper that invokes it.
+
+        package Foo;
+
+        caller or __PACKAGE__->main;
+
+        sub main {
+          ...
+          exit 0;
+        }
+
+    Modulinos are useful when writing command line scripts for various reasons:
+
+    - Aids creation of unit tests
+    - Encourages use of OO principles like encapsulation
+    - Helps organize your script into useful methods
+
+    Modulinos are invoked with a pattern like:
+
+        #!/usr/bin/env bash
+        perl $(perl -MFoo -e 'print $INC{q{Foo}};') "$@"
+
+    `CPAN::Maker::Bootstrapper`'s `Makefile` supports a PHONY target
+    **modulino** that will produce a bash script that invokes your
+    modulino. If your Perl module that implements your modulino were named `Foo::Bar`...
+
+        make modulino
+
+    ...would produce a bash script in `bin/` named `foo-bar.in`. `make`
+    will then build `bin/foo-bar` from `bin/foo-bar.in` via a pattern
+    rule producing the executable that ends up in the distribution.
+
+    _Note: The generated modulino is added to the `.gitignore` file if
+    it exists._
+
 # PREREQUISITES
 
 The following tool(s) must be on your `PATH`:
 
 - `git` - used to read global identity config
+- `make` - GNU make is required to build the project
 
 # SEE ALSO
 
 [CPAN::Maker](https://metacpan.org/pod/CPAN%3A%3AMaker) - the distribution builder driven by `buildspec.yml`
+(includes `make-cpan-dist.pl`)
 
 [CLI::Simple](https://metacpan.org/pod/CLI%3A%3ASimple) - the CLI framework used by the bootstrapper itself and
 optionally by generated CLI module stubs
@@ -242,7 +352,7 @@ this distribution, available for use in your own tools
 
 # AUTHOR
 
-Rob Lauer - <rlauer6@comcast.net>
+Rob Lauer - <rlauer@treasurersbriefcase.com>
 
 # LICENSE
 

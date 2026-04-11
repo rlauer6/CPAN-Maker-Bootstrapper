@@ -211,7 +211,7 @@ sub cmd_install {
   chdir $installdir;
 
   my $stub_arg = choose {
-    return sprintf 'STUB=%s/module.pm.tmpl', $dist_dir
+    return sprintf 'STUB=%s/class-module.pm.tmpl', $dist_dir
       if !$self->get_stub;
 
     return sprintf 'STUB=%s/cli-module.pm.tmpl', $dist_dir
@@ -237,6 +237,7 @@ sub main {
   );
 
   my @option_specs = qw(
+    help|h
     installdir|i=s
     basedir|b=s
     module|m=s
@@ -273,19 +274,19 @@ CPAN::Maker::Bootstrapper - Scaffold a new CPAN distribution in one command
 =head1 SYNOPSIS
 
   # Create a new plain Perl module project
-  cpan-maker.sh --module My::New::Module
+  cpan-maker-bootstrapper --module My::New::Module
 
   # Create a CLI module project (inherits from CLI::Simple)
-  cpan-maker.sh --module My::New::CLI --stub cli
+  cpan-maker-bootstrapper --module My::New::CLI --stub cli
 
   # Use a custom stub
-  cpan-maker.sh --module My::Module --stub /path/to/mystub.pm
+  cpan-maker-bootstrapper --module My::Module --stub /path/to/mystub.pm
 
   # Install into a specific directory
-  cpan-maker.sh --module My::Module --installdir ~/git
+  cpan-maker-bootstrapper --module My::Module --installdir ~/git
 
   # Override git identity
-  cpan-maker.sh --module My::Module --username "Rob Lauer" --email rob@example.org
+  cpan-maker-bootstrapper --module My::Module --username "Rob Lauer" --email rob@example.org
 
 =head1 DESCRIPTION
 
@@ -301,8 +302,8 @@ a standard project layout.
 
 =head1 SETUP
 
-C<cpan-maker.sh> will read your global F<.gitconfig> file to populate
-some of options used when creating a distribution. If you have a
+C<cpan-maker-bootstrapper> will read your global F<.gitconfig> file to populate
+some of the options used when creating a distribution. If you have a
 GitHub user account add your username:
 
  git config --global user.github <your-username>
@@ -320,7 +321,7 @@ option:
 
 B<Scaffold the project>:
 
-  cpan-maker.sh --module My::New::Module
+  cpan-maker-bootstrapper --module My::New::Module
 
 This creates C<My-New-Module/> in the directory specified by
 C<--basedir> (or the directory specified by C<--installdir>), copies
@@ -349,8 +350,11 @@ distribution.
 
 =item 4.
 
-B<Implement your module> - edit the generated stub in C<lib/> and add
-your dependencies to C<cpanfile> (if needed).
+B<Implement your module> or edit the generated stub in C<lib/>. The
+scanner will detect most dependencies automatically on the next
+C<make>; see L</Dependencies> for how to manage entries the scanner
+misses or gets wrong. Review the generated F<requires> and
+F<test-requires> files.
 
 =item 5.
 
@@ -363,6 +367,9 @@ C<scandeps-static.pl>, generates C<README.md> from your POD via
 C<pod2markdown>, and builds the tarball via C<make-cpan-dist.pl>.
 
 =back
+
+See L</Pod Stripping> if you want to strip or extract POD from your
+modules before packaging.
 
 =head1 INSTALLED PROJECT FILES
 
@@ -430,11 +437,11 @@ files specified in the C<buildspec.yml> file used by C<make-cpan-dist.pl>.
 
 I<Note: By default, any change to your C<.pm.in> files will trigger a
 rescan of your modules for new dependencies. This will add a
-significant delay to when you have many modules and a large number of
+significant delay when you have many modules and a large number of
 dependencies. You can avoid the scan by setting the environment
-variable C<CPAN_MAKER_SCAN> to any value other than 'ON'.>
+variable C<SCAN> to any value other than C<ON> (case insensitive).>
 
- make CPAN_MAKER_SCAN=OFF
+ make SCAN=OFF
 
 =item C<make release> / C<make minor> / C<make major>
 
@@ -452,7 +459,11 @@ or any C<*.in> source files.
 
 =back
 
-=head1 OPTIONS
+=head1 USAGE
+
+ cpan-maker-bootstrapper options
+
+=head2 Options
 
 =over 4
 
@@ -463,8 +474,8 @@ current working directory when C<--installdir> and C<--basedir> are not
 provided. The directory must exist or the script will throw an
 exception.
 
-I<Note: The C<--basedir> option is used when you do not provide an
-C<--installdir> option. They are mutually exclusive.>
+I<Note: If C<--installdir> is provided it takes precedence and
+C<--basedir> is ignored.>
 
 default: pwd
 
@@ -478,7 +489,7 @@ the stub's path. For example, if my package is C<My::App> and the
 module's path contains C<My/App> then the script will assume your
 module name is C<My::App>.
 
- cpan-maker.sh --stub $HOME/workdir/My/App.pm
+ cpan-maker-bootstrapper --stub $HOME/workdir/My/App.pm
 
 =item C<--installdir|-i> DIR
 
@@ -531,6 +542,118 @@ C<--module> option for details.
 
 =back
 
+=head2 Notes
+
+=over 4
+
+=item B<Dependencies>
+
+The C<Makefile> will attempt to detect Perl module dependencies by
+scanning .pm.in and .pl.in files and creating the F<requires> and
+F<test-requires> files whenever you run C<make>. These files are used
+by the F<make-cpan-dist.pl> utility to specify the dependencies in your
+CPAN distribution file. You can prevent that by setting the environment
+variable C<SCAN=OFF>. The default is C<SCAN=ON>.
+
+To prevent an entry from being removed by a rescan, prefix the module
+name with C<+>. These entries are sticky and survive all subsequent
+scans even if the scanner no longer detects them.  To pin a specific
+version, simply edit the version number in the F<requires> file. If
+the scanner subsequently detects a different version, the Makefile
+will preserve your pinned version. Note that pinned versions are
+B<never> updated automatically - if you want to adopt a newer version
+you must edit the file manually.
+
+In your requires file:
+
+  +Foo::Bar 1.0    # sticky - survives all rescans
+  Baz::Qux  2.5   # version pinned - scanner won't override this version
+
+I<Note: These two mechanisms are independent - C<+> controls whether an entry
+survives rescans, while the version number controls what version is
+required.>
+
+=item B<Pod Stripping>
+
+When you package your CPAN distribution you can strip the pod from
+your modules or you can extract the pod and provide them as separate
+C<.pod> files. There are two C<make> environment variables you can set
+to control that behavior.
+
+=over 4
+
+=item C<make POD=extract>
+
+C<extract> will strip POD from your module and create a C<.pod> file
+containing the stripped POD that will be added to your distribution.
+
+=item C<make POD=remove>
+
+C<remove> will strip POD from your module. No POD will be included in
+the distribution.
+
+=back
+
+=item B<Skip File>
+
+Add a F<requires.skip> file to exclude modules from the scanned
+list. Sometimes the scanner may include modules that are optional or
+modules you just don't want to include as requirements because they
+are already included in a module you have already required.
+
+Similarly, F<test-requires.skip> excludes modules from the test
+dependency scan.
+
+On a clean first run neither F<requires> nor F<test-requires> exists
+yet, so the raw scanner output becomes the dependency file - meaning
+skip list and pins have no effect until the second run.
+
+=item B<Modulinos>
+
+A modulino is a Perl file that doubles as a runnable script. The bash
+script produced by C<make modulino> is the wrapper that invokes it.
+
+ package Foo;
+
+ caller or __PACKAGE__->main;
+
+ sub main {
+   ...
+   exit 0;
+ }
+
+Modulinos are useful when writing command line scripts for various reasons:
+
+=over 4
+
+=item Aids creation of unit tests
+
+=item Encourages use of OO principles like encapsulation
+
+=item Helps organize your script into useful methods
+
+=back
+
+Modulinos are invoked with a pattern like:
+
+ #!/usr/bin/env bash
+ perl $(perl -MFoo -e 'print $INC{q{Foo}};') "$@"
+
+C<CPAN::Maker::Bootstrapper>'s C<Makefile> supports a PHONY target
+B<modulino> that will produce a bash script that invokes your
+modulino. If your Perl module that implements your modulino were named C<Foo::Bar>...
+
+ make modulino
+
+...would produce a bash script in C<bin/> named C<foo-bar.in>. C<make>
+will then build C<bin/foo-bar> from C<bin/foo-bar.in> via a pattern
+rule producing the executable that ends up in the distribution.
+
+I<Note: The generated modulino is added to the F<.gitignore> file if
+it exists.>
+
+=back
+
 =head1 PREREQUISITES
 
 The following tool(s) must be on your C<PATH>:
@@ -539,11 +662,14 @@ The following tool(s) must be on your C<PATH>:
 
 =item * C<git> - used to read global identity config
 
+=item * C<make> - GNU make is required to build the project
+
 =back
 
 =head1 SEE ALSO
 
 L<CPAN::Maker> - the distribution builder driven by C<buildspec.yml>
+(includes C<make-cpan-dist.pl>)
 
 L<CLI::Simple> - the CLI framework used by the bootstrapper itself and
 optionally by generated CLI module stubs
@@ -553,7 +679,7 @@ this distribution, available for use in your own tools
 
 =head1 AUTHOR
 
-Rob Lauer - E<lt>rlauer6@comcast.netE<gt>
+Rob Lauer - E<lt>rlauer@treasurersbriefcase.comE<gt>
 
 =head1 LICENSE
 

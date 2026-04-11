@@ -23,6 +23,8 @@ extra-files:
     - cli-module.pm.tmpl
     - class-module.pm.tmpl
     - test.t.tmpl
+    - .gitignore
+    - modulino.tmpl
     - MANIFEST
 
 resources:

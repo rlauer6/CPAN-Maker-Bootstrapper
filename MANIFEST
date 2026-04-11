@@ -1,3 +1,5 @@
 Makefile.txt
 release-notes.mk
 version.mk
+modulino.tmpl
+.gitignore
