@@ -1,6 +1,6 @@
 .PHONY: release-notes
 
-release-notes:
+release-notes: ## creates release-{version}.diffs, release-{version}.lst and release-{version}.tar.gz used for automatic release note generation
 	@curr_ver=$(VERSION); \
 	last_tag=$$(git tag -l '[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1); \
 	diffs="release-$$curr_ver.diffs"; \

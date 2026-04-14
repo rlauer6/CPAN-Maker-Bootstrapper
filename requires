@@ -5,3 +5,4 @@ Class::Accessor::Fast 0.51
 Config::Tiny 2.30
 File::HomeDir 1.006
 File::ShareDir 1.118
+YAML::XS 0

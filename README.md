@@ -1,3 +1,20 @@
+# Table of Contents
+
+* [NAME](#name)
+* [SYNOPSIS](#synopsis)
+* [DESCRIPTION](#description)
+* [SETUP](#setup)
+* [WORKFLOW](#workflow)
+* [INSTALLED PROJECT FILES](#installed-project-files)
+* [THE PROJECT MAKEFILE](#the-project-makefile)
+  * [README.md](#readmemd)
+* [USAGE](#usage)
+  * [Options](#options)
+  * [Notes](#notes)
+* [PREREQUISITES](#prerequisites)
+* [SEE ALSO](#see-also)
+* [AUTHOR](#author)
+* [LICENSE](#license)
 # NAME
 
 CPAN::Maker::Bootstrapper - Scaffold a new CPAN distribution in one command
@@ -33,9 +50,10 @@ a standard project layout.
 
 # SETUP
 
-`cpan-maker-bootstrapper` will read your global `.gitconfig` file to populate
-some of the options used when creating a distribution. If you have a
-GitHub user account add your username:
+`cpan-maker-bootstrapper` can read your global `.gitconfig` file or
+a properly formatted `.ini` file to populate some of the options
+used when creating a distribution. If you have a GitHub user account
+add your username:
 
     git config --global user.github <your-username>
 
@@ -43,6 +61,22 @@ If you typically create projects in one directory, add the `basedir`
 option:
 
     git config --global cpan-maker.basedir $HOME/git
+
+If you want to create a different configuration file it should have at
+least the following entries:
+
+    [user]
+           email = your-email@somedomain
+           name = First Last
+           # use to construct GitHub resource URLs
+           github = github-user
+
+    [cpan-maker]
+           basedir   = /home/myhome/git
+           # indicates the resources section of Makefile.PL should contain github references
+           resources = github
+
+Use the `--config` option to use your custom config.
 
 # WORKFLOW
 
@@ -161,6 +195,30 @@ Key Makefile targets:
     Removes generated files. Does not affect `buildspec.yml`, `VERSION`,
     or any `*.in` source files.
 
+## README.md
+
+The `Makefile` will automatically create a `README.md` from your
+Perl module's pod. The stock `buildspec.yml` will include that
+`README.md` in the distribution's share directory. If you want the
+`README.md` to be included in the distribution but not installed,
+edit the `buildspec.yml` file.
+
+**Before**
+
+    extra-files:
+      - ChangeLog
+      - share:
+        - README.md
+
+**After**
+  extra-files:
+    - ChangeLog
+    - README.md
+
+If you want a different `README.md` generated create a
+`README.md.in` file. That file will be filtered through
+[Markdown::Render](https://metacpan.org/pod/Markdown%3A%3ARender) to produce a `.md` file.
+
 # USAGE
 
     cpan-maker-bootstrapper options
@@ -178,6 +236,13 @@ Key Makefile targets:
     `--basedir` is ignored._
 
     default: pwd
+
+- `--config|-c` configuration file
+
+    The path to a `.ini` file that contains configuration information
+    used to scaffold your project.
+
+    default: ~/.gitconfig
 
 - `--module|-m` MODULE (required)
 
@@ -218,6 +283,33 @@ Key Makefile targets:
     Overwrite an existing project. Without this flag, the command dies if a
     `Makefile` already exists in the target directory.
 
+- `--import|-I` path
+
+    A path that contains `.pm` or `.pl` files for importing into the
+    project. You can specify multiple paths. You cannot use `--stub` and
+    `--import` together.
+
+    Example:
+
+        cpan-maker-bootstrapper --module Foo::Bar -I ~/foo-bar/lib -I ~/foo-bar/bin
+
+    When using the `--import` option, you must use the `--module` option to
+    specify the primary module that defines the distribution.
+
+    _Note: The `Makefile` will automatically attempt to substitute the
+    token `1.0.3` inside your `.pl.in` or `.pm.in` files with
+    the current semantic version in the `VERSION` file. If you want to
+    use that for versioning your scripts and modules add the token as
+    shown below:_
+
+        our $VERSION = '1.0.3';
+
+- `--resources|-r` github
+
+    Currently takes only a single value: 'github' that indicates that the
+    resources section of `Makefile.PL` should be populated with GitHub
+    URL references. Future versions may support additional providers.
+
 - `--stub|-s` TYPE|PATH
 
     Controls the module stub used to generate the initial `.pm.in` source
@@ -233,6 +325,8 @@ Key Makefile targets:
     have already started writing. You can omit the `--module` option if
     you supply your own stub file. See the explanation for the
     `--module` option for details.
+
+    When specifying a stub you cannot use the `--import` option.
 
 ## Notes
 
@@ -347,8 +441,9 @@ The following tool(s) must be on your `PATH`:
 [CLI::Simple](https://metacpan.org/pod/CLI%3A%3ASimple) - the CLI framework used by the bootstrapper itself and
 optionally by generated CLI module stubs
 
-[CPAN::Maker::GitConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3AGitConfigReader) - the git config reader bundled with
-this distribution, available for use in your own tools
+[CPAN::Maker::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3AConfigReader) - the git config reader bundled with this
+distribution, available for use in your own
+tools. `CPAN::Maker::GitConfigReader` retained as an alias.
 
 # AUTHOR
 

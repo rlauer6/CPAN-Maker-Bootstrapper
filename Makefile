@@ -1,7 +1,6 @@
 #-*- mode: makefile; -*-
-# make POD=extract
-# make POD=remove
-# make SCAN=off
+# To see available targets"
+# make help
 
 SHELL := /bin/bash
 
@@ -22,6 +21,7 @@ SCANDEPS       := $(shell command -v scandeps-static.pl)
 POD2MARKDOWN   := $(shell command -v pod2markdown)
 GIT            := $(shell command -v git)
 PODEXTRACT     := $(shell command -v podextract)
+MD_UTILS       := $(shell command -v md-utils.pl)
 
 GIT_NAME     ?= $(shell $(GIT) config --global user.name || echo "Anonymouse")
 GIT_EMAIL    ?= $(shell $(GIT) config --global user.email || echo "anonymouse@example.org")
@@ -84,16 +84,16 @@ TARBALL = $(PROJECT_NAME)-$(VERSION).tar.gz
 
 DEPS = \
     buildspec.yml \
+    README.md \
     $(MODULE_PATH).in \
     $(PERL_MODULES) \
     $(BIN_FILES) \
     requires \
     test-requires \
     $(UNIT_TEST_NAME) \
-    README.md \
     ChangeLog
 
-all: $(TARBALL)
+all: $(TARBALL) ## builds distribution tarball and dependencies
 
 $(TARBALL): $(DEPS)
 	$(MAKE_CPAN_DIST) -b $<
@@ -115,14 +115,28 @@ $(MODULE_PATH).in: module.pm.tmpl
 $(UNIT_TEST_NAME): $(UNIT_TEST_TEMPLATE)
 	@sed -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' < $< > $@
 
+ifeq ($(wildcard README.md.in),)
+# If README.md.in does NOT exist, use POD2MARKDOWN on the module
 README.md: $(MODULE_PATH)
-	@$(POD2MARKDOWN) $< > $@
+	@tmpfile=$$(mktemp); \
+	trap 'rm -f $$tmpfile' EXIT; \
+	echo "@TOC@" > $$tmpfile; \
+	$(POD2MARKDOWN) $< >> $$tmpfile; \
+	$(MD_UTILS) $$tmpfile > $@;
+else
+# If README.md.in DOES exist, use MD_UTILS on the template
+README.md: README.md.in
+	@$(MD_UTILS) $< > $@
+endif
+
 
 .PHONY: modulino
-modulino: modulino.tmpl
-	@binfile="$(PROJECT_NAME)"; \
+modulino: modulino.tmpl ## creates a bash script that calls your modulino (default: $(MODULE_NAME))
+	@NAME="$(MODULINO_NAME)"; \
+	NAME="$${NAME:-$(MODULE_NAME)}"; \
+	binfile=$$(echo "$$NAME" | perl -npe 's/::/\-/g;'); \
 	modulino="bin/$${binfile,,}"; \
-	sed -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' $< > "$${modulino}.in"; \
+	sed -e "s/[@]MODULE_NAME[@]/$$NAME/" $< > "$${modulino}.in"; \
 	test -e .gitignore && { grep -q "$$modulino" .gitignore || echo "$$modulino" >> .gitignore; }; \
 	echo "$$modulino"
 
@@ -198,7 +212,7 @@ endef
 
 export s_filter_requires = $(value filter_requires)
 
-requires: $(SOURCE_FILES)
+requires: $(SOURCE_FILES) ## creates or updates the `requires` file used to populate PREQ_PM section of the Makefile.PL
 	@cleanfiles="$@.tmp $@.xxx"; \
 	trap 'rm -f $$cleanfiles' EXIT; \
 	scan="$(SCAN)"; \
@@ -213,7 +227,7 @@ requires: $(SOURCE_FILES)
 	  fi; \
 	fi
 
-test-requires: $(TESTS)
+test-requires: $(TESTS) ## creates or update the `test-requires` file used to populate the TEST_REQUIRES section of the Makefile.PL
 	@cleanfiles="$@.tmp $@.xxx"; \
 	trap 'rm -f $$cleanfiles' EXIT; \
 	scan="$(SCAN)"; \
@@ -231,19 +245,31 @@ test-requires: $(TESTS)
 ChangeLog:
 	@touch $@
 
-buildspec.yml: $(BUILDSPEC_TEMPLATE)
-	@sed -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/g' \
+buildspec.yml: | $(BUILDSPEC_TEMPLATE)
+	@buildspec=$$(mktemp); \
+	trap 'rm -f $$buildspec' EXIT; \
+	sed -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/g' \
 	    -e 's/[@]GIT_NAME[@]/$(GIT_NAME)/g' \
 	    -e 's/[@]GITHUB_USER[@]/$(GITHUB_USER)/g' \
 	    -e 's/[@]GIT_EMAIL[@]/$(GIT_EMAIL)/g' \
 	    -e 's/[@]PROJECT_NAME[@]/$(PROJECT_NAME)/g' \
-	    -e 's/[@]MIN_PERL_VERSION[@]/$(MIN_PERL_VERSION)/g' $< > $@
+	    -e 's/[@]MIN_PERL_VERSION[@]/$(MIN_PERL_VERSION)/g' $< > $$buildspec; \
+	if test -e resources.yml; then \
+	  cat resources.yml >> $$buildspec; \
+	  rm resources.yml; \
+	fi; \
+	cp $$buildspec $@;
+
+include help.mk
 
 include version.mk
 
 include release-notes.mk
 
+include git.mk
+
 CLEANFILES = \
+    README.md \
     $(BIN_FILES) \
     $(PERL_MODULES) \
     $(POD_MODULES) \
@@ -256,5 +282,5 @@ CLEANFILES = \
     resources \
     release-*.{lst,diffs}
 
-clean:
+clean: ## removes temporary build artifacts
 	rm -f $(CLEANFILES)

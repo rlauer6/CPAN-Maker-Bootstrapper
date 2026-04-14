@@ -19,20 +19,22 @@ extra-files:
     - Makefile.txt
     - buildspec.yml.tmpl
     - release-notes.mk
+    - git.mk
+    - help.mk
     - version.mk
     - cli-module.pm.tmpl
     - class-module.pm.tmpl
     - test.t.tmpl
-    - .gitignore
+    - gitignore
     - modulino.tmpl
     - MANIFEST
 
 resources:
-  homepage: http://github.com/rlauer6/CPAN-Maker-Bootstrapper.git
+  homepage: http://github.com/rlauer6/CPAN-Maker-Bootstrapper
   bugtracker:
     web: http://github.com/rlauer6/CPAN-Maker-Bootstrapper/issues
     mailto: rclauer@gmail.com
   repository:
     url: git://github.com/rlauer6/CPAN-Maker-Bootstrapper.git
-    web: http://github.com/rlauer6/CPAN-Maker-Bootstrapper.git
+    web: http://github.com/rlauer6/CPAN-Maker-Bootstrapper
     type: 'git'

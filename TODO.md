@@ -1,11 +1,20 @@
 # TODOs
 
+# 1.0.4
+* [ ] --list-stubs
+* [ ] new stubs, mod_perl handler?
+
 # 1.0.3
 
-* [ ] make help
-* [ ] make modulino MODULINO_MODULE=Foo::Bar
-* [ ] validate module names
-* [ ] --list-stubs
+* [x] validate module names
+* [x] read arbitrary .ini files
+* [x] --resources flag
+* [x] make help
+* [x] make modulino MODULINO_NAME=Foo::Bar
+* [x] add TOC to POD
+* [x] make git
+* [x] add .gitignore to projects
+* [x] import modules and scripts
 
 # 1.0.2
 

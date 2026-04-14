@@ -1,0 +1,15 @@
+**/*.sh
+module.pm.tmpl
+**/*.pl
+**/*.pm
+*.gz
+*.log
+*.tmp
+.\#*
+\#*
+*.diffs
+*.lst
+extra-files
+provides
+resources
+

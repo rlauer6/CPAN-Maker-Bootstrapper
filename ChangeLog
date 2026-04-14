@@ -1,3 +1,47 @@
+Tue Apr 14 08:02:13 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[1.0.3]:
+	* release-notes-1.0.3.md: new
+	* help.mk: new
+	* requires: +YAML::XS
+	* VERSION: bump
+	* git.mk: new
+	* ChangeLog: modified
+	* MANIFEST: +git.mk, +help.mk, gitignore
+	* buildspec.yml.tmpl
+	- set timestamp in past so older Makefiles do not trigger rebuild of buildspec.yml
+	* buildspec.yml
+	- likewise
+	- remove resources section
+	* Makefile
+	- build README.mds from either .md.in or POD
+	- create a TOC for module POD
+	- include git.mk
+	- include help.mk
+	- add ## comments for make help
+	- tack on resources.yml to buildspec.yml if found
+	- make the buildspec.yml.tmpl an order-only dependency (build buildspec.yml once)
+	* README.md: generated
+	* TODO.md: updated
+	* release-notes.mk: add comments for make help
+	* version.mk: likewise
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- add blurb about README.md files
+	- POD updates
+	(cmd_install)
+	- cp gitignore -> .gitignore
+	- import files
+	- add resources to buildspec if --resources = github
+	(CPAN::Maker::ConfigReader::cpan_maker_resources): new
+	(init)
+	- read import file listing
+	(_import_file_listing): new
+	(init_config)
+	- renamed from init_git_config()
+	- conditionally set options
+	(main)
+	- +--import, --resources
+
 Fri Apr 10 14:55:23 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[1.0.2]:

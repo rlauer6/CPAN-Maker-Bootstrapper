@@ -1,7 +1,7 @@
-package CPAN::Maker::GitConfigReader;
-
 use strict;
 use warnings;
+
+package CPAN::Maker::ConfigReader;
 
 use Config::Tiny;
 use File::HomeDir;
@@ -63,11 +63,25 @@ sub cpan_maker_basedir {
 }
 
 ########################################################################
+sub cpan_maker_resources {
+########################################################################
+  my ($self) = @_;
+
+  return $self->get_value( 'cpan-maker', 'resources' );
+}
+
+########################################################################
 sub core_editor {
 ########################################################################
   my ($self) = @_;
   return $self->get_value( 'core', 'editor' );
 }
+
+########################################################################
+package CPAN::Maker::GitConfigReader;
+########################################################################
+
+our @ISA = qw(CPAN::Maker::ConfigReader);
 
 ########################################################################
 package CPAN::Maker::Bootstrapper;
@@ -80,9 +94,12 @@ use English qw(-no_match_vars);
 use Cwd qw(getcwd abs_path);
 
 use File::Path qw(make_path);
+use File::Basename qw(basename dirname);
 use File::Copy;
+use File::Find;
 use File::ShareDir qw(dist_dir);
-
+use List::Util qw(none);
+use YAML::XS qw(Dump);
 use parent qw(CLI::Simple);
 
 our $VERSION = '@PACKAGE_VERSION@';
@@ -99,7 +116,7 @@ sub init {
 
   $self->set_dist_dir( dist_dir($dist) );
 
-  $self->_init_git_config;
+  $self->_init_config;
 
   my $basedir = $self->get_basedir;
 
@@ -108,6 +125,57 @@ sub init {
 
   $basedir //= abs_path(getcwd);
   $self->set_basedir( abs_path($basedir) );
+
+  if ( $self->get_import ) {
+    $self->_import_file_listing;
+  }
+
+  return;
+}
+
+########################################################################
+sub _import_file_listing {
+########################################################################
+  my ($self) = @_;
+
+  my @import_paths = ref $self->get_import ? @{ $self->get_import } : ( $self->get_import );
+
+  my @modules;
+  my @scripts;
+  my %packages;
+
+  for my $path (@import_paths) {
+    die "ERROR: import path '$path' does not exist\n"
+      if !-d $path;
+
+    find(
+      sub {
+        my $name = $File::Find::name;
+        return if $name !~ /[.]p[lm]$/xsm;
+
+        if ( $name =~ /[.]pm$/xsm ) {
+          push @modules, $name;
+        }
+        else {
+          push @scripts, $name;
+        }
+      },
+      $path
+    );
+  }
+
+  # collect all packages from each .pm file
+  foreach my $package (@modules) {
+    my $code = slurp($package);
+
+    while ( $code =~ /^package\s+([\w:]+)\s*;/gxsm ) {
+      my $found = $1;
+      $packages{$package} //= [];
+      push @{ $packages{$package} }, $found;
+    }
+  }
+
+  $self->set_import_file_listing( { packages => \%packages, scripts => \@scripts } );
 
   return;
 }
@@ -129,24 +197,33 @@ sub _find_package_name {
 }
 
 ########################################################################
-sub _init_git_config {
+sub _init_config {
 ########################################################################
   my ($self) = @_;
 
   # Example usage:
-  my $git_reader = eval { CPAN::Maker::GitConfigReader->new(); };
+  my $reader = eval { CPAN::Maker::ConfigReader->new( $self->get_config ); };
 
-  if ( !$git_reader ) {
-    warn "WARNING: could not find a .gitconfig file. Using defaults.\n";
+  if ( !$reader ) {
+    warn "WARNING: could not find config file. Using defaults.\n";
   }
 
-  $self->set_username( $git_reader    ? $git_reader->user_name   : 'anonymouse' );
-  $self->set_email( $git_reader       ? $git_reader->user_email  : 'anonymouse@example.org' );
-  $self->set_github_user( $git_reader ? $git_reader->user_github : q{} );
+  {  # the one legit and allowable use of postfix if!
+    ## no critic
+    $self->set_username( $reader ? $reader->user_name : q{} )
+      if !$self->get_username;
 
-  # only if not provided on command line
-  if ( !$self->get_basedir ) {
-    $self->set_basedir( $git_reader ? $git_reader->cpan_maker_basedir : q{} );
+    $self->set_email( $reader ? $reader->user_email : q{} )
+      if !$self->get_email;
+
+    $self->set_github_user( $reader ? $reader->user_github : q{} )
+      if !$self->get_github_user;
+
+    $self->set_resources( $reader ? $reader->cpan_maker_resources : q{} )
+      if !$self->get_resources;
+
+    $self->set_basedir( $reader ? $reader->cpan_maker_basedir : q{} )
+      if !$self->get_basedir;
   }
 
   return;
@@ -160,6 +237,9 @@ sub cmd_install {
   my $module_name = $self->get_module;
 
   my $stub = $self->get_stub;
+
+  die "ERROR: set --stub or --import but not both\n"
+    if $stub && $self->get_import;
 
   if ( !$module_name && $stub && -f $stub ) {
     my $package_name = _find_package_name($stub);
@@ -179,6 +259,9 @@ sub cmd_install {
 
   die "ERROR: --module is a required argument\n"
     if !$module_name;
+
+  die "ERROR: '$module_name' is not a valid Perl module name\n"
+    if $module_name !~ /\A[[:upper:]]\w*(?:::[[:upper:]]\w*)*\z/xsmi;
 
   my $installdir = $self->get_installdir;
 
@@ -203,27 +286,88 @@ sub cmd_install {
   }
 
   rename "$installdir/Makefile.txt", "$installdir/Makefile";
+  rename "$installdir/gitignore",    "$installdir/.gitignore";
 
   my $module_name_arg = sprintf 'MODULE_NAME=%s', $module_name;
 
-  my $pwd = abs_path(getcwd);
+  if ( $self->get_resources && $self->get_resources eq 'github' ) {
+    my $project_name = $module_name;
+    $project_name =~ s/::/-/g;
+
+    my $github_user = $self->get_github_user // 'anonymouse';
+
+    my $resources = {
+      bugtracker => {
+        web    => sprintf( 'https://github.com/%s/%s/issues', $github_user, $project_name ),
+        mailto => $self->get_email,
+      },
+      repository => {
+        type => 'git',
+        url  => sprintf( 'git@github.com:%s/%s.git', $github_user, $project_name ),
+        web  => sprintf( 'https://github.com/%s/%s', $github_user, $project_name ),
+      },
+      homepage => sprintf( 'https://github.com/%s/%s', $github_user, $project_name ),
+    };
+
+    open my $fh, '>', "$installdir/resources.yml"
+      or die "ERROR: could not open resources.yml for writing: $OS_ERROR\n";
+
+    my $yml = Dump( { resources => $resources } );
+    $yml =~ s/^---\n//xsm;
+
+    print {$fh} $yml;
+
+    close $fh;
+  }
+
+  my $stub_arg = choose {
+    return
+      if $self->get_import_file_listing;
+
+    return sprintf 'STUB=%s/class-module.pm.tmpl', $dist_dir
+      if !$stub;
+
+    return sprintf 'STUB=%s/cli-module.pm.tmpl', $dist_dir
+      if $stub eq 'cli';
+
+    return sprintf 'STUB=%s', $stub
+      if -f $stub;
+
+    die sprintf "ERROR: stub '%s' not found\n", $stub
+  };
+
+  if ( my $import_listing = $self->get_import_file_listing ) {
+    my ( $packages, $scripts ) = @{$import_listing}{qw(packages scripts)};
+
+    # copy scripts to bin
+    foreach my $s ( @{$scripts} ) {
+      copy $s, sprintf '%s/bin/%s.in', $installdir, basename($s);
+    }
+
+    # create sub directories and copy packages
+    foreach my $p ( keys %{$packages} ) {
+      my $pkg_key = $p;
+      $pkg_key =~ s/\//::/xsmg;  # this might look weird (lib::Foo::Bar) but our regexp will match
+
+      # verify we have a package in the list for this module that matches the filename
+      if ( none { $pkg_key =~ /\Q$_\E/xsm } @{ $packages->{$p} } ) {
+        warn "WARNING: could not verify that $p includes an actual class by this name...skipping.\n";
+        next;
+      }
+
+      # find the package that defines the path...
+      my ($path) = grep { $pkg_key =~ /\Q$_\E/xsm } @{ $packages->{$p} };
+      $path =~ s/::/\//gxsm;
+
+      my $lib_path = sprintf '%s/lib/%s', $installdir, dirname($path);
+      make_path $lib_path;
+      copy $p, sprintf '%s/%s.in', $lib_path, basename($p);
+    }
+  }
 
   chdir $installdir;
 
-  my $stub_arg = choose {
-    return sprintf 'STUB=%s/class-module.pm.tmpl', $dist_dir
-      if !$self->get_stub;
-
-    return sprintf 'STUB=%s/cli-module.pm.tmpl', $dist_dir
-      if $self->get_stub eq 'cli';
-
-    return sprintf 'STUB=%s', $self->get_stub
-      if -f $self->get_stub;
-
-    die sprintf "ERROR: stub '%s' not found\n", $self->get_stub
-  };
-
-  system make => $module_name_arg, $stub_arg;
+  system make => grep {defined} $module_name_arg, $stub_arg;
 
   return $SUCCESS;
 }
@@ -238,17 +382,20 @@ sub main {
 
   my @option_specs = qw(
     help|h
-    installdir|i=s
     basedir|b=s
-    module|m=s
+    config|c=s
     email|e=s
-    username|u=s
-    github-user|g=s
-    stub|s=s
     force|f!
+    github-user|g=s
+    installdir|i=s
+    import|I=s@
+    module|m=s
+    resources|r=s
+    stub|s=s
+    username|u=s
   );
 
-  my @extra_options = qw(dist_dir);
+  my @extra_options = qw(dist_dir import_file_listing);
 
   my $cli = __PACKAGE__->new(
     commands      => \%commands,
@@ -302,9 +449,10 @@ a standard project layout.
 
 =head1 SETUP
 
-C<cpan-maker-bootstrapper> will read your global F<.gitconfig> file to populate
-some of the options used when creating a distribution. If you have a
-GitHub user account add your username:
+C<cpan-maker-bootstrapper> can read your global F<.gitconfig> file or
+a properly formatted C<.ini> file to populate some of the options
+used when creating a distribution. If you have a GitHub user account
+add your username:
 
  git config --global user.github <your-username>
 
@@ -312,6 +460,22 @@ If you typically create projects in one directory, add the C<basedir>
 option:
 
  git config --global cpan-maker.basedir $HOME/git
+
+If you want to create a different configuration file it should have at
+least the following entries:
+
+ [user]
+ 	email = your-email@somedomain
+ 	name = First Last
+        # use to construct GitHub resource URLs
+ 	github = github-user
+
+ [cpan-maker]
+ 	basedir   = /home/myhome/git
+        # indicates the resources section of Makefile.PL should contain github references
+        resources = github
+
+Use the C<--config> option to use your custom config.
 
 =head1 WORKFLOW
 
@@ -459,6 +623,30 @@ or any C<*.in> source files.
 
 =back
 
+=head2 README.md
+
+The F<Makefile> will automatically create a F<README.md> from your
+Perl module's pod. The stock F<buildspec.yml> will include that
+F<README.md> in the distribution's share directory. If you want the
+F<README.md> to be included in the distribution but not installed,
+edit the F<buildspec.yml> file.
+
+B<Before>
+
+  extra-files:
+    - ChangeLog
+    - share:
+      - README.md
+
+B<After>
+  extra-files:
+    - ChangeLog
+    - README.md
+
+If you want a different F<README.md> generated create a
+F<README.md.in> file. That file will be filtered through
+L<Markdown::Render> to produce a C<.md> file.
+
 =head1 USAGE
 
  cpan-maker-bootstrapper options
@@ -478,6 +666,13 @@ I<Note: If C<--installdir> is provided it takes precedence and
 C<--basedir> is ignored.>
 
 default: pwd
+
+=item C<--config|-c> configuration file
+
+The path to a C<.ini> file that contains configuration information
+used to scaffold your project.
+
+default: ~/.gitconfig
 
 =item C<--module|-m> MODULE (required)
 
@@ -518,6 +713,34 @@ C<buildspec.yml>. Defaults to C<user.github> from your global git config.
 Overwrite an existing project. Without this flag, the command dies if a
 C<Makefile> already exists in the target directory.
 
+
+=item C<--import|-I> path
+
+A path that contains C<.pm> or C<.pl> files for importing into the
+project. You can specify multiple paths. You cannot use C<--stub> and
+C<--import> together.
+
+Example:
+
+ cpan-maker-bootstrapper --module Foo::Bar -I ~/foo-bar/lib -I ~/foo-bar/bin
+
+When using the C<--import> option, you must use the C<--module> option to
+specify the primary module that defines the distribution.
+
+I<Note: The F<Makefile> will automatically attempt to substitute the
+token C<@PACKAGE_VERSION@> inside your C<.pl.in> or C<.pm.in> files with
+the current semantic version in the F<VERSION> file. If you want to
+use that for versioning your scripts and modules add the token as
+shown below:>
+
+ our $VERSION = '@PACKAGE_VERSION@';
+
+=item C<--resources|-r> github
+
+Currently takes only a single value: 'github' that indicates that the
+resources section of F<Makefile.PL> should be populated with GitHub
+URL references. Future versions may support additional providers.
+
 =item C<--stub|-s> TYPE|PATH
 
 Controls the module stub used to generate the initial C<.pm.in> source
@@ -539,6 +762,8 @@ you supply your own stub file. See the explanation for the
 C<--module> option for details.
 
 =back
+
+When specifying a stub you cannot use the C<--import> option.
 
 =back
 
@@ -674,8 +899,9 @@ L<CPAN::Maker> - the distribution builder driven by C<buildspec.yml>
 L<CLI::Simple> - the CLI framework used by the bootstrapper itself and
 optionally by generated CLI module stubs
 
-L<CPAN::Maker::GitConfigReader> - the git config reader bundled with
-this distribution, available for use in your own tools
+L<CPAN::Maker::ConfigReader> - the git config reader bundled with this
+distribution, available for use in your own
+tools. C<CPAN::Maker::GitConfigReader> retained as an alias.
 
 =head1 AUTHOR
 
