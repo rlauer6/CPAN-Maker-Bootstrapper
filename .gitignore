@@ -13,3 +13,5 @@ extra-files
 provides
 resources
 bin/cpan-maker-bootstrapper
+*.tdy
+*.crit

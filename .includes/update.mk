@@ -7,6 +7,7 @@ MANAGED_FILES = \
     update.mk \
     upgrade.mk \
     version.mk \
+    perl.mk \
     release-notes.mk \
     modulino.tmpl
 
@@ -15,11 +16,16 @@ BOOTSTRAPPER_DIST_DIR := $(shell perl -MFile::ShareDir=dist_dir \
 
 .PHONY: update
 
+INCLUDES_DIR = .includes
+
 update: ## update managed project files from the installed bootstrapper
-	@for f in $(MANAGED_FILES); do \
+	@mkdir -p $(INCLUDES_DIR); \
+	for f in $(MANAGED_FILES); do \
 	  src="$(BOOTSTRAPPER_DIST_DIR)/$$f"; \
 	  test -e "$$src" || continue; \
-	  cp "$$src" "$$f"; \
+	  cp "$$src" "$(INCLUDES_DIR)/$$f"; \
+	  chmod -w "$(INCLUDES_DIR)/$$f"; \
 	done; \
+	cp "$(BOOTSTRAPPER_DIST_DIR)/Makefile.txt" Makefile.txt; \
 	mv Makefile.txt Makefile; \
 	echo "Files updated. Review changes with: git diff"

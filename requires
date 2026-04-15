@@ -1,5 +1,8 @@
-+CPAN::Maker 1.7.2
++CPAN::Maker 1.7.5
++Markdown::Render 0
++Pod::Extract 0
 +Pod::Markdown 0
++Text::Markdown::Discount 0
 CLI::Simple 1.0.11
 Class::Accessor::Fast 0.51
 Config::Tiny 2.30

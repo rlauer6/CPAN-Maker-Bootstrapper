@@ -1,7 +1,10 @@
 Makefile.txt
-release-notes.mk
-version.mk
-help.mk
 git.mk
+help.mk
+perl.mk
+release-notes.mk
+update.mk
+upgrade.mk
+version.mk
 modulino.tmpl
 gitignore

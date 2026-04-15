@@ -1,105 +1,22 @@
+package CPAN::Maker::Bootstrapper;
+
 use strict;
 use warnings;
 
-package CPAN::Maker::ConfigReader;
-
-use Config::Tiny;
-use File::HomeDir;
-
-use parent qw(Class::Accessor::Fast);
-
-__PACKAGE__->follow_best_practice;
-__PACKAGE__->mk_accessors(qw(config));
-
-########################################################################
-sub new {
-########################################################################
-  my ( $class, $file ) = @_;
-
-  # Default to the current user's global .gitconfig if no file is provided
-  $file //= File::HomeDir->my_home . '/.gitconfig';
-
-  my $config = Config::Tiny->read($file)
-    or die "ERROR: Could not read $file: " . Config::Tiny->errstr . "\n";
-
-  return $class->SUPER::new( { config => $config } );
-}
-
-########################################################################
-sub get_value {
-########################################################################
-  my ( $self, $section, $parameter ) = @_;
-
-  return $self->get_config->{$section}->{$parameter};
-}
-
-########################################################################
-sub user_name {
-########################################################################
-  my ($self) = @_;
-  return $self->get_value( 'user', 'name' );
-}
-
-########################################################################
-sub user_github {
-########################################################################
-  my ($self) = @_;
-  return $self->get_value( 'user', 'github' );
-}
-
-########################################################################
-sub user_email {
-########################################################################
-  my ($self) = @_;
-  return $self->get_value( 'user', 'email' );
-}
-
-########################################################################
-sub cpan_maker_basedir {
-########################################################################
-  my ($self) = @_;
-
-  return $self->get_value( 'cpan-maker', 'basedir' );
-}
-
-########################################################################
-sub cpan_maker_resources {
-########################################################################
-  my ($self) = @_;
-
-  return $self->get_value( 'cpan-maker', 'resources' );
-}
-
-########################################################################
-sub core_editor {
-########################################################################
-  my ($self) = @_;
-  return $self->get_value( 'core', 'editor' );
-}
-
-########################################################################
-package CPAN::Maker::GitConfigReader;
-########################################################################
-
-our @ISA = qw(CPAN::Maker::ConfigReader);
-
-########################################################################
-package CPAN::Maker::Bootstrapper;
-########################################################################
-
 use CLI::Simple::Constants qw(:booleans);
 use CLI::Simple::Utils qw(slurp choose);
+use CPAN::Maker::ConfigReader;
+use Cwd qw(getcwd abs_path);
 use Data::Dumper;
 use English qw(-no_match_vars);
-use Cwd qw(getcwd abs_path);
-
-use File::Path qw(make_path);
 use File::Basename qw(basename dirname);
 use File::Copy;
 use File::Find;
+use File::Path qw(make_path);
 use File::ShareDir qw(dist_dir);
 use List::Util qw(none);
 use YAML::XS qw(Dump);
+
 use parent qw(CLI::Simple);
 
 our $VERSION = '@PACKAGE_VERSION@';
@@ -230,6 +147,44 @@ sub _init_config {
 }
 
 ########################################################################
+sub cmd_create_config {
+########################################################################
+  my ($self) = @_;
+
+  print <<'END_STUB';
+# CPAN::Maker configuration file
+# Use with: cpan-maker-bootstrapper --config /path/to/this/file
+# Or set:   export CPAN_MAKER_CONFIG=/path/to/this/file
+
+[user]
+    # your full name
+    name   =
+    # your email address
+    email  =
+    # your GitHub username (used to construct repository URLs)
+    github =
+
+[cpan-maker]
+    # directory in which new projects are created
+    # basedir = ~/git
+
+    # generate GitHub resource URLs (currently only 'github' supported)
+    # resources = github
+
+    # enable perl -wc syntax checking in pattern rules
+    # syntax_checking = on
+
+    # path to perltidy configuration file (enables tidy checking)
+    # perltidyrc = ~/.perltidyrc
+
+    # path to perlcritic configuration file (enables critic checking)
+    # perlcriticrc = ~/.perlcriticrc
+END_STUB
+
+  return $SUCCESS;
+}
+
+########################################################################
 sub cmd_install {
 ########################################################################
   my ($self) = @_;
@@ -279,10 +234,18 @@ sub cmd_install {
 
   my @manifest = split /\n/xsm, slurp("$dist_dir/MANIFEST");
 
-  make_path( $installdir, "$installdir/t", "$installdir/lib", "$installdir/bin" );
+  my @dirs = map {"$installdir/$_"} qw(t lib bin .includes);
+
+  make_path( $installdir, @dirs );
 
   foreach (@manifest) {
-    copy "$dist_dir/$_", "$installdir/$_";
+    if (/[.]mk$/xsm) {
+      copy "$dist_dir/$_", "$installdir/.includes/$_";
+      chmod oct('0444'), "$installdir/.includes/$_";
+    }
+    else {
+      copy "$dist_dir/$_", "$installdir/$_";
+    }
   }
 
   rename "$installdir/Makefile.txt", "$installdir/Makefile";
@@ -292,7 +255,7 @@ sub cmd_install {
 
   if ( $self->get_resources && $self->get_resources eq 'github' ) {
     my $project_name = $module_name;
-    $project_name =~ s/::/-/g;
+    $project_name =~ s/::/-/xsmg;
 
     my $github_user = $self->get_github_user // 'anonymouse';
 
@@ -376,8 +339,9 @@ sub cmd_install {
 sub main {
 ########################################################################
   my %commands = (
-    install => \&cmd_install,
-    default => \&cmd_install,
+    install         => \&cmd_install,
+    default         => \&cmd_install,
+    'create-config' => \&cmd_create_config,
   );
 
   my @option_specs = qw(
@@ -435,6 +399,9 @@ CPAN::Maker::Bootstrapper - Scaffold a new CPAN distribution in one command
   # Override git identity
   cpan-maker-bootstrapper --module My::Module --username "Rob Lauer" --email rob@example.org
 
+  # create a starter configuration file
+  cpan-maker-bootstrapper create-config > ~/.cpan-makerrc
+
 =head1 DESCRIPTION
 
 C<CPAN::Maker::Bootstrapper> scaffolds a new CPAN distribution directory
@@ -446,6 +413,172 @@ artifacts.
 The result is a project that can produce a distributable tarball with a
 single additional C<make> invocation, with no manual editing required for
 a standard project layout.
+
+=head1 QUICK START
+
+Install the bootstrapper and its dependencies:
+
+ cpanm CPAN::Maker CPAN::Maker::Bootstrapper
+
+I<Note: Before scaffolding your first project, consider running C<create-config>
+to set up a personal configuration file - it pre-populates your git
+identity, GitHub username, and preferred project directory so you never
+have to pass them on the command line. See L</SETUP> for details.>
+
+Scaffold a new project:
+
+ cpan-maker-bootstrapper --module My::Module --installdir ~/git/My-Module
+
+The bootstrapper creates the project directory, installs the build
+system, generates stub source and test files, and runs C<make>
+automatically. By the time it finishes you already have a working
+distribution tarball in F<~/git/My-Module>.
+
+ cd ~/git/My-Module
+
+Review the generated files - particularly F<buildspec.yml> which
+controls how the distribution is built, and F<requires> and
+F<test-requires> which list your module's dependencies. Your git
+identity is pre-populated from F<~/.gitconfig> but you may want to
+adjust the description or resource URLs.
+
+Edit the generated stub in F<lib/My/Module.pm.in>. This is your
+primary source file - never edit the generated F<.pm> file directly
+as it will be overwritten on the next C<make>.
+
+As your project grows, add new modules to F<lib/> and scripts to
+F<bin/> as F<.pm.in> and F<.pl.in> files respectively. The build
+system discovers them automatically - no changes to the Makefile
+required. Add new test files to F<t/> as F<.t> files.
+
+When you are ready to build:
+
+ make
+
+This scans your source files for dependencies, regenerates F<requires>
+and F<test-requires>, generates F<README.md> from your POD, and
+produces a distributable tarball.
+
+To verify your distribution installs cleanly:
+
+ cpanm --local-lib=$HOME My-Module-*.tar.gz
+
+To initialize version control and make your first commit:
+
+ make git
+
+See L</EXTENDING THE BUILD SYSTEM> for how to customize the build,
+L</Notes> for dependency management details, and L</FAQ> for common
+questions.
+
+=head1 WHY YOU SHOULD CONSIDER USING YET ANOTHER BUILD TOOL
+
+If you have ever reached for Jenkins, GitHub Actions, CircleCI, or a
+sprawling shell script to automate your Perl builds, consider what
+those tools actually require: a server or cloud account, a proprietary
+YAML DSL, plugin ecosystems with their own release cycles, containers,
+agents, and configuration files that only run in one specific
+environment.
+
+The C<CPAN::Maker> build system runs everywhere Perl runs - your
+laptop, a remote EC2 instance, a colleague's workstation - with no
+setup beyond C<cpanm CPAN::Maker::Bootstrapper>. C<git clone && make>
+is always sufficient to build a fresh checkout.
+
+=head2 The Stack
+
+The build system is built on three tools that have been solving these
+problems correctly for decades:
+
+=over 4
+
+=item * B<GNU make> - dependency tracking, incremental builds, the
+target/prerequisite model is still the clearest expression of I<build
+this from that>. A Makefile from 1990 still runs today.
+
+=item * B<bash> - process orchestration, file manipulation,
+conditionals, the Unix toolkit. Available on every system you will
+ever deploy to.
+
+=item * B<Perl> - text processing, CPAN ecosystem access, JSON, YAML,
+HTTP - anything complex enough to warrant a real language, right there
+in your build recipes without shelling out to another runtime.
+
+=back
+
+Together they give you a complete, auditable, version-controlled build
+system that is trivially debuggable with C<make -n> and C<bash -x>,
+self-documents via C<make help>, and needs no external services to run.
+
+=head2 Best Practices Out of the Box
+
+The installed build system encourages professional Perl development
+habits from the start:
+
+=over 4
+
+=item * B<Source files are protected> - generated C<.pm> and C<.pl>
+files are write-protected, making it clear they should never be edited
+directly. Edit the C<.pm.in> and C<.pl.in> sources instead.
+
+=item * B<Dependencies are tracked automatically> - C<scandeps-static.pl>
+scans your source files on every build, keeping F<requires> and
+F<test-requires> current. You stay in control via pinning, sticky
+entries, and skip lists.
+
+=item * B<Quality gates are built in> - optional C<perl -wc> syntax
+checking, C<perltidy>, and C<perlcritic> stage gates can be enabled
+via your configuration file, stopping bad code before it enters the
+distribution.
+
+=item * B<The build system upgrades itself> - C<make update> refreshes
+managed build files from the installed bootstrapper; C<make upgrade>
+checks MetaCPAN and upgrades the bootstrapper itself.
+
+=item * B<Extension without modification> - F<project.mk> is your
+upgrade-safe extension point. Add custom targets, inter-module
+dependencies, and project-specific variables there. The managed
+F<Makefile> is never modified directly.
+
+=back
+
+=head2 A GNU Make Tutorial in Disguise
+
+The F<.includes/> directory is also a practical demonstration of
+advanced GNU make techniques that most developers never encounter -
+working, production-tested examples you can learn from and adapt:
+
+=over 4
+
+=item * Pattern rules and sentinel files for incremental quality gates
+
+=item * C<define>/C<endef> snippets - reusable shell and Perl code
+blocks exported as make variables, eliminating duplication across
+recipes
+
+=item * C<$(shell ...)>, C<$(eval ...)>, C<$(call ...)>,
+C<$(filter-out ...)>, C<$(addprefix ...)>, C<$(patsubst ...)> - the
+full make function toolkit in real use
+
+=item * C<?=>, C<:=>, C<+=>, and C<=> - all four assignment operators
+with their distinct evaluation semantics put to work
+
+=item * Order-only prerequisites, C<.DEFAULT_GOAL>, C<-include>, and
+C<.SHELLFLAGS := -ec> - advanced directives that tame complex builds
+
+=item * Trap-based temp file cleanup, C<mktemp>, and bash C<[[ ]]>>
+conditionals inside make recipes
+
+=item * Perl snippets exported into make via C<$(value ...)> and
+C<export> - leveraging Perl's text processing power directly in the
+build
+
+=back
+
+If GNU make is the cast-iron pan of build tools - virtually
+indestructible, infinitely useful, and unfairly overlooked in favor of
+shinier alternatives - then C<CPAN::Maker::Bootstrapper> is the recipe
+book that shows you what it can really do.
 
 =head1 SETUP
 
@@ -477,63 +610,14 @@ least the following entries:
 
 Use the C<--config> option to use your custom config.
 
-=head1 WORKFLOW
+Use C<create-config> to generate a starter configuration file:
 
-=over 4
+ cpan-maker-bootstrapper create-config > ~/.cpan-makerrc
 
-=item 1.
+Then point C<cpan-maker-bootstrapper> at it by setting the
+C<CPAN_MAKER_CONFIG> environment variable in your shell profile:
 
-B<Scaffold the project>:
-
-  cpan-maker-bootstrapper --module My::New::Module
-
-This creates C<My-New-Module/> in the directory specified by
-C<--basedir> (or the directory specified by C<--installdir>), copies
-the scaffold files, and runs C<make MODULE_NAME=My::New::Module> to
-generate the initial source and test stubs.
-
-=item 2.
-
-B<Review the generated files> - particularly C<buildspec.yml>, which
-controls how C<make-cpan-dist.pl> builds the distribution. Your git
-identity is filled in automatically but you may want to adjust the
-description or resource URLs before committing.
-
-=item 3.
-
-B<Add new components> - as your project grows, add new modules to
-C<lib/> and scripts to C<bin/> as C<.pm.in> and C<.pl.in> files
-respectively. The Makefile discovers them automatically via
-C<find-files> - no manual changes to the Makefile are required. Any
-new C<.pm.in> or C<.pl.in> file will trigger a dependency rescan on
-the next C<make> and be included in the distribution automatically.
-
-Similarly, add new test files to C<t/> as C<.t> files. They will be
-picked up automatically by C<make test-requires> and included in the
-distribution.
-
-=item 4.
-
-B<Implement your module> or edit the generated stub in C<lib/>. The
-scanner will detect most dependencies automatically on the next
-C<make>; see L</Dependencies> for how to manage entries the scanner
-misses or gets wrong. Review the generated F<requires> and
-F<test-requires> files.
-
-=item 5.
-
-B<Build the distribution>:
-
-  make
-
-This auto-generates C<requires> and C<test-requires> via
-C<scandeps-static.pl>, generates C<README.md> from your POD via
-C<pod2markdown>, and builds the tarball via C<make-cpan-dist.pl>.
-
-=back
-
-See L</Pod Stripping> if you want to strip or extract POD from your
-modules before packaging.
+ export CPAN_MAKER_CONFIG=$HOME/.cpan-makerrc
 
 =head1 INSTALLED PROJECT FILES
 
@@ -563,13 +647,31 @@ overwritten the next time C<make> runs!>
 =item * C<t/00-E<lt>project-nameE<gt>.t> - minimal smoke test that calls
 C<use_ok> on your module.
 
-=item * C<version.mk> - provides C<make release>, C<make minor>,
-C<make major> version bump targets.
+=item * F<.includes/> - the managed build system directory. Contains
+all C<.mk> files installed and maintained by the bootstrapper. These
+files are write-protected and should never be edited directly. Updated
+by C<make update>.
 
-=item * C<release-notes.mk> - provides C<make release-notes> to generate
-a diff and file list against the previous tagged version.
+ .includes/perl.mk         - pattern rules, syntax checking, tidy, critic
+ .includes/git.mk          - make git target
+ .includes/help.mk         - make help target
+ .includes/version.mk      - make release/minor/major targets
+ .includes/release-notes.mk - make release-notes target
+ .includes/update.mk       - make update target
+ .includes/upgrade.mk      - make upgrade/check-upgrade targets
 
-=item * C<ChangeLog> - empty placeholder, required by the distribution.
+=item * F<project.mk> - your extension point for custom make rules,
+inter-module dependencies, and project-specific variables. Never
+touched by C<make update>. See L</EXTENDING THE BUILD SYSTEM>.
+
+=item * F<modulino.tmpl> - template used by C<make modulino> to
+generate bash wrapper scripts for modulino-style modules.
+
+=item * F<VERSION> - contains the current version string in
+C<major.minor.patch> format. Managed by C<make release>, C<make minor>,
+and C<make major>.
+
+=item * F<ChangeLog> - empty placeholder, required by the distribution.
 
 =back
 
@@ -621,6 +723,39 @@ to the previous git tag.
 Removes generated files. Does not affect C<buildspec.yml>, C<VERSION>,
 or any C<*.in> source files.
 
+=item C<make tidy>
+
+Runs C<perltidy> on all C<.pm.in> and C<.pl.in> source files using
+the profile specified by C<perltidyrc> in your config. Requires
+C<perltidyrc> to be set.
+
+=item C<make critic>
+
+Runs C<perlcritic> on all source files using the profile specified by
+C<perlcriticrc> in your config. Requires C<perlcriticrc> to be set.
+
+=item C<make lint>
+
+Runs both C<make tidy> and C<make critic>.
+
+=item C<make git>
+
+Initializes a git repository, stages all recommended project files
+including F<.includes/*>, and makes an initial C<BigBang> commit.
+
+=item C<make quick>
+
+Builds the distribution tarball with dependency scanning and all
+linting disabled. Useful during active development when you want fast
+iterative builds without waiting for C<scandeps-static.pl> or quality
+gates.
+
+ make quick
+
+Equivalent to:
+
+ make SCAN=off LINT=off
+
 =back
 
 =head2 README.md
@@ -645,11 +780,38 @@ B<After>
 
 If you want a different F<README.md> generated create a
 F<README.md.in> file. That file will be filtered through
-L<Markdown::Render> to produce a C<.md> file.
+F<md-utils.pl> (from L<Markdown::Render>) to produce a C<.md> file.
 
 =head1 USAGE
 
- cpan-maker-bootstrapper options
+ cpan-maker-bootstrapper options command
+
+=head2 Commands
+
+=over 4
+
+=item install (default)
+
+Scaffolds a new project. This is the default command so:
+
+ cpan-maker-bootstrapper -m My::Module
+
+...is the same as:
+
+ cpan-maker-bootstrapper -m My::Module install
+
+=item create-config
+
+Outputs a stub configuration file to STDOUT. Create and edit a new
+config to customize the behavior of C<cpan-maker-bootstrapper>.
+
+ cpan-maker-bootstrapper create-config > ~/.cpan-makerrc
+
+Then set C<CPAN_MAKER_CONFIG> to point to it:
+
+ export CPAN_MAKER_CONFIG=$HOME/.cpan-makerrc
+
+=back
 
 =head2 Options
 
@@ -877,6 +1039,38 @@ rule producing the executable that ends up in the distribution.
 I<Note: The generated modulino is added to the F<.gitignore> file if
 it exists.>
 
+=item B<Perl Quality Tools>
+
+The build system supports optional Perl quality gates controlled via
+your configuration file. Set the following keys in the C<[cpan-maker]>
+section:
+
+ syntax_checking = on          # enables perl -wc on generated files
+ perltidyrc = ~/.perltidyrc    # enables perltidy stage gate
+ perlcriticrc = ~/.perlcriticrc # enables perlcritic stage gate
+
+These can be overridden per-run from the command line:
+
+ make SYNTAX_CHECKING=off      # disable syntax checking
+ make PERLTIDYRC=""            # disable tidy gate
+ make PERLCRITICRC=""          # disable critic gate
+
+Add modules that cannot be syntax-checked outside their runtime
+environment to C<PERLWC_SKIP> in F<project.mk>:
+
+ PERLWC_SKIP = bin/startup.pl
+
+Add inter-module build dependencies to F<project.mk> when modules
+depend on each other at build time:
+
+ lib/Foo/Bar.pm: lib/Foo.pm
+
+To disable all linting at once:
+
+ make LINT=off
+
+Or use C<make quick> to disable both scanning and linting in one step.
+
 =back
 
 =head1 PREREQUISITES
@@ -888,6 +1082,8 @@ The following tool(s) must be on your C<PATH>:
 =item * C<git> - used to read global identity config
 
 =item * C<make> - GNU make is required to build the project
+
+=item * C<curl> - used by C<make upgrade> to query MetaCPAN
 
 =back
 
@@ -914,14 +1110,26 @@ will be overwritten if you run C<make update>.
 
 Instead, the recommended workflow, should you need to add new make
 targets or control the order of the build based on dependencies is to
-add those to F<project.mk>. The bootstrapper's F<Makefile> includes
-that file if it exists:
+add those to F<project.mk>. All managed build system files live in
+the F<.includes/> directory where they are write-protected and clearly
+separated from your project files. The F<Makefile> includes them
+automatically and conditionally includes F<project.mk> from the
+project root:
 
+ include .includes/perl.mk
+ include .includes/help.mk
+ include .includes/version.mk
+ include .includes/release-notes.mk
+ include .includes/git.mk
+ include .includes/update.mk
+ include .includes/upgrade.mk
  -include project.mk
 
-The leading C<-> means make will not complain if F<project.mk> does
-not exist. This gives you a sanctioned, upgrade-safe extension point
-for anything project-specific.
+F<project.mk> remains in the project root - it is your file, always
+writable, and never touched by C<make update>. The leading C<-> on
+its include means make will not complain if it does not exist yet.
+This gives you a sanctioned, upgrade-safe extension point for
+anything project-specific.
 
 =head2 What belongs in project.mk
 
@@ -1005,12 +1213,13 @@ to revert any changes you don't want.
 The following files are managed and may be updated:
 
  Makefile
- git.mk
- help.mk
- update.mk
- upgrade.mk
- version.mk
- release-notes.mk
+ .includes/git.mk
+ .includes/help.mk
+ .includes/update.mk
+ .includes/upgrade.mk
+ .includes/version.mk
+ .includes/perl.mk
+ .includes/release-notes.mk
  modulino.tmpl
 
 Your F<project.mk>, F<buildspec.yml>, F<requires>, F<VERSION>, source
@@ -1026,6 +1235,260 @@ C<PATH>. Required for C<make upgrade> to work:
 =back
 
 
+=head1 FAQ
+
+=head2 My build is failing with a module not found error during syntax checking
+
+This is almost always a build-time dependency ordering issue. If
+C<lib/Foo/Bar.pm> uses C<lib/Foo.pm>, make may attempt to build and
+syntax-check C<Foo/Bar.pm> before C<Foo.pm> exists. Declare the
+dependency in F<project.mk>:
+
+ lib/Foo/Bar.pm: lib/Foo.pm
+
+This tells make to build C<Foo.pm> first. See L</Inter-module
+dependencies> for details.
+
+If the module genuinely cannot be loaded outside its runtime
+environment (an Apache handler, a mod_perl module, etc.), add it to
+C<PERLWC_SKIP> in F<project.mk>:
+
+ PERLWC_SKIP = lib/My/Apache/Handler.pm
+
+=head2 How do I do a fast build during development?
+
+ make quick
+
+This disables dependency scanning and all linting (syntax checking,
+perltidy, perlcritic) for the current build. Your F<requires> and
+F<test-requires> files are not updated and no quality gates run.
+
+Use C<make> without flags when you are ready to do a full build before
+committing or releasing.
+
+You can also disable individual features:
+
+ make SCAN=off          # skip dependency scanning only
+ make LINT=off          # skip all linting only
+ make SYNTAX_CHECKING=off  # skip syntax checking only
+
+=head2 How do I add a new module or script to the project?
+
+Create the source file with the C<.pm.in> or C<.pl.in> extension in
+the appropriate directory:
+
+ lib/My/New/Module.pm.in
+ bin/my-script.pl.in
+
+The build system discovers them automatically via C<find-files> - no
+changes to the Makefile are required. The next C<make> will include
+them in the dependency scan and the distribution.
+
+=head2 How do I include additional files in the distribution?
+
+Edit F<buildspec.yml> and add entries to the C<extra-files> section:
+
+ extra-files:
+   - ChangeLog
+   - README.md
+   - share:
+     - my-config-template.yml
+     - my-data-file.json
+
+Files listed under C<share:> are installed into the distribution's
+share directory and can be accessed at runtime via
+L<File::ShareDir>.
+
+=head2 I want to pin a version or add a module the scanner missed
+
+Edit F<requires> directly. Prefix the module name with C<+> to make
+the entry sticky - it will survive all subsequent rescans even if the
+scanner no longer detects it:
+
+ +My::Required::Module 1.5
+
+To pin a version without making the entry sticky, just set the version
+number. The scanner will preserve your version if it detects a
+different one on subsequent builds:
+
+ Some::Module 2.0
+
+These two mechanisms are independent - C<+> controls survivability,
+the version number controls what version is required. See L</Dependencies>
+for full details.
+
+=head2 I want to exclude a module the scanner found
+
+Create a F<requires.skip> file in the project root with one module
+name per line:
+
+ My::Own::Module
+ Some::Transitive::Dep
+
+The scanner will never add these to F<requires>. Use
+F<test-requires.skip> for the same effect on test dependencies.
+
+Note that on a clean first build neither skip file has any effect
+since there is no prior F<requires> file to compare against. The skip
+list takes effect from the second build onward.
+
+=head2 I edited a .pm file and my changes disappeared
+
+The C<.pm> files in F<lib/> are generated from the C<.pm.in> sources
+and are write-protected. Always edit the C<.pm.in> file - the C<.pm>
+is regenerated on every C<make> and your changes will be lost.
+
+If you are unsure which file to edit:
+
+ ls -l lib/My/Module.pm lib/My/Module.pm.in
+
+The C<.pm.in> file is the one you own.
+
+=head2 make update overwrote something I changed in a managed file
+
+The managed files in F<.includes/> should never be edited directly -
+that is what F<project.mk> is for. However if you did modify a managed
+file and C<make update> overwrote it, git has you covered:
+
+ git diff .includes/perl.mk
+ git checkout .includes/perl.mk
+
+This is why C<make git> and committing your F<.includes/> directory is
+strongly recommended - git is your safety net for the entire build
+system.
+
+=head2 make says nothing to do but my source changed
+
+The most common cause is that the generated C<.pm> file is newer than
+the C<.pm.in> source. This can happen if you accidentally edited the
+C<.pm> directly or if file timestamps got out of sync. Force a rebuild:
+
+ touch lib/My/Module.pm.in
+
+Or do a clean rebuild:
+
+ make clean && make
+
+=head2 How do I disable scanning temporarily?
+
+ make SCAN=off
+
+This skips the dependency scan entirely for that run - useful when
+you have many modules and want a fast build during active development.
+The default is C<SCAN=ON>.
+
+=head2 How do I disable syntax checking temporarily?
+
+ make SYNTAX_CHECKING=off
+
+Similarly you can disable individual quality gates:
+
+ make PERLTIDYRC="" PERLCRITICRC=""
+
+=head2 How do I upgrade the build system?
+
+ make upgrade
+
+This checks MetaCPAN for a newer version of
+C<CPAN::Maker::Bootstrapper>, installs it via C<cpanm>, and
+automatically refreshes the managed files in F<.includes/> with
+C<make update>. Review the changes with C<git diff> and revert
+anything you don't want with C<git checkout>.
+
+If C<cpanm> is not installed:
+
+ make cpanm && make upgrade
+
+=head2 I want to add a bash script to my distribution
+
+Create the script in F<bin/> with a C<.sh.in> extension:
+
+ bin/my-script.sh.in
+
+The build system will process it through the standard token
+substitution (replacing C<@PACKAGE_VERSION@> and C<@MODULE_NAME@>),
+make it executable, and include it in the distribution automatically.
+
+If your script is more than a few lines of bash, consider writing it
+as a I<modulino> instead - a Perl module that doubles as a runnable
+script. Modulinos are easier to test, encourage encapsulation, and
+give you the full power of Perl and CPAN. The build system has
+first-class support for them:
+
+ make modulino
+
+This generates a bash wrapper in F<bin/> that invokes your module as
+a script if it uses the modulino pattern:
+
+ caller or __PACKAGE__->main;
+
+See L</Modulinos> for full details.
+
+=head2 What is C<make release-notes> used for?
+
+C<make release-notes> generates three artifacts comparing the current
+working state of your repository against the previous git tag:
+
+=over 4
+
+=item * F<release-E<lt>versionE<gt>.diffs> - a unified diff of all
+changed files
+
+=item * F<release-E<lt>versionE<gt>.lst> - a list of added, modified,
+and removed files
+
+=item * F<release-E<lt>versionE<gt>.tar.gz> - a tarball containing
+only the changed files
+
+=back
+
+These are primarily useful for generating release notes and changelogs,
+and for submitting targeted patches. Run it after bumping the version
+with C<make release>, C<make minor>, or C<make major> and before
+publishing to CPAN:
+
+ make minor
+ make release-notes
+ # review release-1.1.0.diffs
+ make
+
+The artifacts are all the clues needed for LLMs to produce accurate
+and well written release notes for your project.
+
+The release artifacts are cleaned up by C<make clean>.
+
+=head2 Something still doesn't work - how do I report an issue?
+
+First check the L</FAQ> sections above - your
+issue may already be covered.
+
+If you believe you have found a bug or want to request a feature,
+please open an issue on GitHub:
+
+ https://github.com/rlauer6/CPAN-Maker-Bootstrapper/issues
+
+When reporting a bug please include:
+
+=over 4
+
+=item * The version of C<CPAN::Maker::Bootstrapper> (C<cpan-maker-bootstrapper --version>
+or C<perl -MCPAN::Maker::Bootstrapper -e 'print $CPAN::Maker::Bootstrapper::VERSION'>)
+
+=item * The output of C<make -n> or C<make --debug=v> if the issue is
+build-related
+
+=item * Your F<buildspec.yml> and F<project.mk> if relevant (redact
+any sensitive information)
+
+=item * The Perl and GNU make versions (C<perl --version>, C<make --version>)
+
+=item * B<MAKE SURE YOUR SUBMISSION DOES NOT CONTAIN SECRETS!>
+
+=back
+
+Pull requests are welcome. The project follows the standard GitHub
+fork-and-PR workflow.
+
 =head1 SEE ALSO
 
 L<CPAN::Maker> - the distribution builder driven by C<buildspec.yml>
@@ -1036,7 +1499,10 @@ optionally by generated CLI module stubs
 
 L<CPAN::Maker::ConfigReader> - the git config reader bundled with this
 distribution, available for use in your own
-tools. C<CPAN::Maker::GitConfigReader> retained as an alias.
+tools.
+
+L<Module::ScanDeps::Static> - the static dependency scanner used by
+C<make requires> and C<make test-requires> to analyze your source files
 
 =head1 AUTHOR
 

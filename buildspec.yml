@@ -18,10 +18,13 @@ extra-files:
     - README.md
     - Makefile.txt
     - buildspec.yml.tmpl
-    - release-notes.mk
-    - git.mk
-    - help.mk
-    - version.mk
+    - .includes/git.mk
+    - .includes/help.mk
+    - .includes/perl.mk
+    - .includes/release-notes.mk
+    - .includes/update.mk
+    - .includes/upgrade.mk
+    - .includes/version.mk
     - cli-module.pm.tmpl
     - class-module.pm.tmpl
     - test.t.tmpl

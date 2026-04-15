@@ -3,12 +3,17 @@
 * [NAME](#name)
 * [SYNOPSIS](#synopsis)
 * [DESCRIPTION](#description)
+* [QUICK START](#quick-start)
+* [WHY YOU SHOULD CONSIDER USING YET ANOTHER BUILD TOOL](#why-you-should-consider-using-yet-another-build-tool)
+  * [The Stack](#the-stack)
+  * [Best Practices Out of the Box](#best-practices-out-of-the-box)
+  * [A GNU Make Tutorial in Disguise](#a-gnu-make-tutorial-in-disguise)
 * [SETUP](#setup)
-* [WORKFLOW](#workflow)
 * [INSTALLED PROJECT FILES](#installed-project-files)
 * [THE PROJECT MAKEFILE](#the-project-makefile)
   * [README.md](#readmemd)
 * [USAGE](#usage)
+  * [Commands](#commands)
   * [Options](#options)
   * [Notes](#notes)
 * [PREREQUISITES](#prerequisites)
@@ -16,6 +21,22 @@
   * [What belongs in project.mk](#what-belongs-in-projectmk)
   * [What does NOT belong in project.mk](#what-does-not-belong-in-projectmk)
   * [Keeping the build system up to date](#keeping-the-build-system-up-to-date)
+* [FAQ](#faq)
+  * [My build is failing with a module not found error during syntax checking](#my-build-is-failing-with-a-module-not-found-error-during-syntax-checking)
+  * [How do I do a fast build during development?](#how-do-i-do-a-fast-build-during-development)
+  * [How do I add a new module or script to the project?](#how-do-i-add-a-new-module-or-script-to-the-project)
+  * [How do I include additional files in the distribution?](#how-do-i-include-additional-files-in-the-distribution)
+  * [I want to pin a version or add a module the scanner missed](#i-want-to-pin-a-version-or-add-a-module-the-scanner-missed)
+  * [I want to exclude a module the scanner found](#i-want-to-exclude-a-module-the-scanner-found)
+  * [I edited a .pm file and my changes disappeared](#i-edited-a-pm-file-and-my-changes-disappeared)
+  * [make update overwrote something I changed in a managed file](#make-update-overwrote-something-i-changed-in-a-managed-file)
+  * [make says nothing to do but my source changed](#make-says-nothing-to-do-but-my-source-changed)
+  * [How do I disable scanning temporarily?](#how-do-i-disable-scanning-temporarily)
+  * [How do I disable syntax checking temporarily?](#how-do-i-disable-syntax-checking-temporarily)
+  * [How do I upgrade the build system?](#how-do-i-upgrade-the-build-system)
+  * [I want to add a bash script to my distribution](#i-want-to-add-a-bash-script-to-my-distribution)
+  * [What is `make release-notes` used for?](#what-is-make-release-notes-used-for)
+  * [Something still doesn't work - how do I report an issue?](#something-still-doesnt-work---how-do-i-report-an-issue)
 * [SEE ALSO](#see-also)
 * [AUTHOR](#author)
 * [LICENSE](#license)
@@ -40,6 +61,9 @@ CPAN::Maker::Bootstrapper - Scaffold a new CPAN distribution in one command
     # Override git identity
     cpan-maker-bootstrapper --module My::Module --username "Rob Lauer" --email rob@example.org
 
+    # create a starter configuration file
+    cpan-maker-bootstrapper create-config > ~/.cpan-makerrc
+
 # DESCRIPTION
 
 `CPAN::Maker::Bootstrapper` scaffolds a new CPAN distribution directory
@@ -51,6 +75,148 @@ artifacts.
 The result is a project that can produce a distributable tarball with a
 single additional `make` invocation, with no manual editing required for
 a standard project layout.
+
+# QUICK START
+
+Install the bootstrapper and its dependencies:
+
+    cpanm CPAN::Maker CPAN::Maker::Bootstrapper
+
+_Note: Before scaffolding your first project, consider running `create-config`
+to set up a personal configuration file - it pre-populates your git
+identity, GitHub username, and preferred project directory so you never
+have to pass them on the command line. See ["SETUP"](#setup) for details._
+
+Scaffold a new project:
+
+    cpan-maker-bootstrapper --module My::Module --installdir ~/git/My-Module
+
+The bootstrapper creates the project directory, installs the build
+system, generates stub source and test files, and runs `make`
+automatically. By the time it finishes you already have a working
+distribution tarball in `~/git/My-Module`.
+
+    cd ~/git/My-Module
+
+Review the generated files - particularly `buildspec.yml` which
+controls how the distribution is built, and `requires` and
+`test-requires` which list your module's dependencies. Your git
+identity is pre-populated from `~/.gitconfig` but you may want to
+adjust the description or resource URLs.
+
+Edit the generated stub in `lib/My/Module.pm.in`. This is your
+primary source file - never edit the generated `.pm` file directly
+as it will be overwritten on the next `make`.
+
+As your project grows, add new modules to `lib/` and scripts to
+`bin/` as `.pm.in` and `.pl.in` files respectively. The build
+system discovers them automatically - no changes to the Makefile
+required. Add new test files to `t/` as `.t` files.
+
+When you are ready to build:
+
+    make
+
+This scans your source files for dependencies, regenerates `requires`
+and `test-requires`, generates `README.md` from your POD, and
+produces a distributable tarball.
+
+To verify your distribution installs cleanly:
+
+    cpanm --local-lib=$HOME My-Module-*.tar.gz
+
+To initialize version control and make your first commit:
+
+    make git
+
+See ["EXTENDING THE BUILD SYSTEM"](#extending-the-build-system) for how to customize the build,
+["Notes"](#notes) for dependency management details, and ["FAQ"](#faq) for common
+questions.
+
+# WHY YOU SHOULD CONSIDER USING YET ANOTHER BUILD TOOL
+
+If you have ever reached for Jenkins, GitHub Actions, CircleCI, or a
+sprawling shell script to automate your Perl builds, consider what
+those tools actually require: a server or cloud account, a proprietary
+YAML DSL, plugin ecosystems with their own release cycles, containers,
+agents, and configuration files that only run in one specific
+environment.
+
+The `CPAN::Maker` build system runs everywhere Perl runs - your
+laptop, a remote EC2 instance, a colleague's workstation - with no
+setup beyond `cpanm CPAN::Maker::Bootstrapper`. `git clone && make`
+is always sufficient to build a fresh checkout.
+
+## The Stack
+
+The build system is built on three tools that have been solving these
+problems correctly for decades:
+
+- **GNU make** - dependency tracking, incremental builds, the
+target/prerequisite model is still the clearest expression of _build
+this from that_. A Makefile from 1990 still runs today.
+- **bash** - process orchestration, file manipulation,
+conditionals, the Unix toolkit. Available on every system you will
+ever deploy to.
+- **Perl** - text processing, CPAN ecosystem access, JSON, YAML,
+HTTP - anything complex enough to warrant a real language, right there
+in your build recipes without shelling out to another runtime.
+
+Together they give you a complete, auditable, version-controlled build
+system that is trivially debuggable with `make -n` and `bash -x`,
+self-documents via `make help`, and needs no external services to run.
+
+## Best Practices Out of the Box
+
+The installed build system encourages professional Perl development
+habits from the start:
+
+- **Source files are protected** - generated `.pm` and `.pl`
+files are write-protected, making it clear they should never be edited
+directly. Edit the `.pm.in` and `.pl.in` sources instead.
+- **Dependencies are tracked automatically** - `scandeps-static.pl`
+scans your source files on every build, keeping `requires` and
+`test-requires` current. You stay in control via pinning, sticky
+entries, and skip lists.
+- **Quality gates are built in** - optional `perl -wc` syntax
+checking, `perltidy`, and `perlcritic` stage gates can be enabled
+via your configuration file, stopping bad code before it enters the
+distribution.
+- **The build system upgrades itself** - `make update` refreshes
+managed build files from the installed bootstrapper; `make upgrade`
+checks MetaCPAN and upgrades the bootstrapper itself.
+- **Extension without modification** - `project.mk` is your
+upgrade-safe extension point. Add custom targets, inter-module
+dependencies, and project-specific variables there. The managed
+`Makefile` is never modified directly.
+
+## A GNU Make Tutorial in Disguise
+
+The `.includes/` directory is also a practical demonstration of
+advanced GNU make techniques that most developers never encounter -
+working, production-tested examples you can learn from and adapt:
+
+- Pattern rules and sentinel files for incremental quality gates
+- `define`/`endef` snippets - reusable shell and Perl code
+blocks exported as make variables, eliminating duplication across
+recipes
+- `$(shell ...)`, `$(eval ...)`, `$(call ...)`,
+`$(filter-out ...)`, `$(addprefix ...)`, `$(patsubst ...)` - the
+full make function toolkit in real use
+- `?=`, `:=`, `+=`, and `=` - all four assignment operators
+with their distinct evaluation semantics put to work
+- Order-only prerequisites, `.DEFAULT_GOAL`, `-include`, and
+`.SHELLFLAGS := -ec` - advanced directives that tame complex builds
+- Trap-based temp file cleanup, `mktemp`, and bash `[[ ]]`>
+conditionals inside make recipes
+- Perl snippets exported into make via `$(value ...)` and
+`export` - leveraging Perl's text processing power directly in the
+build
+
+If GNU make is the cast-iron pan of build tools - virtually
+indestructible, infinitely useful, and unfairly overlooked in favor of
+shinier alternatives - then `CPAN::Maker::Bootstrapper` is the recipe
+book that shows you what it can really do.
 
 # SETUP
 
@@ -82,47 +248,14 @@ least the following entries:
 
 Use the `--config` option to use your custom config.
 
-# WORKFLOW
+Use `create-config` to generate a starter configuration file:
 
-1. **Scaffold the project**:
+    cpan-maker-bootstrapper create-config > ~/.cpan-makerrc
 
-        cpan-maker-bootstrapper --module My::New::Module
+Then point `cpan-maker-bootstrapper` at it by setting the
+`CPAN_MAKER_CONFIG` environment variable in your shell profile:
 
-    This creates `My-New-Module/` in the directory specified by
-    `--basedir` (or the directory specified by `--installdir`), copies
-    the scaffold files, and runs `make MODULE_NAME=My::New::Module` to
-    generate the initial source and test stubs.
-
-2. **Review the generated files** - particularly `buildspec.yml`, which
-controls how `make-cpan-dist.pl` builds the distribution. Your git
-identity is filled in automatically but you may want to adjust the
-description or resource URLs before committing.
-3. **Add new components** - as your project grows, add new modules to
-`lib/` and scripts to `bin/` as `.pm.in` and `.pl.in` files
-respectively. The Makefile discovers them automatically via
-`find-files` - no manual changes to the Makefile are required. Any
-new `.pm.in` or `.pl.in` file will trigger a dependency rescan on
-the next `make` and be included in the distribution automatically.
-
-    Similarly, add new test files to `t/` as `.t` files. They will be
-    picked up automatically by `make test-requires` and included in the
-    distribution.
-
-4. **Implement your module** or edit the generated stub in `lib/`. The
-scanner will detect most dependencies automatically on the next
-`make`; see ["Dependencies"](#dependencies) for how to manage entries the scanner
-misses or gets wrong. Review the generated `requires` and
-`test-requires` files.
-5. **Build the distribution**:
-
-        make
-
-    This auto-generates `requires` and `test-requires` via
-    `scandeps-static.pl`, generates `README.md` from your POD via
-    `pod2markdown`, and builds the tarball via `make-cpan-dist.pl`.
-
-See ["Pod Stripping"](#pod-stripping) if you want to strip or extract POD from your
-modules before packaging.
+    export CPAN_MAKER_CONFIG=$HOME/.cpan-makerrc
 
 # INSTALLED PROJECT FILES
 
@@ -147,10 +280,27 @@ and a POD skeleton with your name and email from git config.
 
 - `t/00-<project-name>.t` - minimal smoke test that calls
 `use_ok` on your module.
-- `version.mk` - provides `make release`, `make minor`,
-`make major` version bump targets.
-- `release-notes.mk` - provides `make release-notes` to generate
-a diff and file list against the previous tagged version.
+- `.includes/` - the managed build system directory. Contains
+all `.mk` files installed and maintained by the bootstrapper. These
+files are write-protected and should never be edited directly. Updated
+by `make update`.
+
+        .includes/perl.mk         - pattern rules, syntax checking, tidy, critic
+        .includes/git.mk          - make git target
+        .includes/help.mk         - make help target
+        .includes/version.mk      - make release/minor/major targets
+        .includes/release-notes.mk - make release-notes target
+        .includes/update.mk       - make update target
+        .includes/upgrade.mk      - make upgrade/check-upgrade targets
+
+- `project.mk` - your extension point for custom make rules,
+inter-module dependencies, and project-specific variables. Never
+touched by `make update`. See ["EXTENDING THE BUILD SYSTEM"](#extending-the-build-system).
+- `modulino.tmpl` - template used by `make modulino` to
+generate bash wrapper scripts for modulino-style modules.
+- `VERSION` - contains the current version string in
+`major.minor.patch` format. Managed by `make release`, `make minor`,
+and `make major`.
 - `ChangeLog` - empty placeholder, required by the distribution.
 
 # THE PROJECT MAKEFILE
@@ -199,6 +349,39 @@ Key Makefile targets:
     Removes generated files. Does not affect `buildspec.yml`, `VERSION`,
     or any `*.in` source files.
 
+- `make tidy`
+
+    Runs `perltidy` on all `.pm.in` and `.pl.in` source files using
+    the profile specified by `perltidyrc` in your config. Requires
+    `perltidyrc` to be set.
+
+- `make critic`
+
+    Runs `perlcritic` on all source files using the profile specified by
+    `perlcriticrc` in your config. Requires `perlcriticrc` to be set.
+
+- `make lint`
+
+    Runs both `make tidy` and `make critic`.
+
+- `make git`
+
+    Initializes a git repository, stages all recommended project files
+    including `.includes/*`, and makes an initial `BigBang` commit.
+
+- `make quick`
+
+    Builds the distribution tarball with dependency scanning and all
+    linting disabled. Useful during active development when you want fast
+    iterative builds without waiting for `scandeps-static.pl` or quality
+    gates.
+
+        make quick
+
+    Equivalent to:
+
+        make SCAN=off LINT=off
+
 ## README.md
 
 The `Makefile` will automatically create a `README.md` from your
@@ -221,11 +404,34 @@ edit the `buildspec.yml` file.
 
 If you want a different `README.md` generated create a
 `README.md.in` file. That file will be filtered through
-[Markdown::Render](https://metacpan.org/pod/Markdown%3A%3ARender) to produce a `.md` file.
+`md-utils.pl` (from [Markdown::Render](https://metacpan.org/pod/Markdown%3A%3ARender)) to produce a `.md` file.
 
 # USAGE
 
-    cpan-maker-bootstrapper options
+    cpan-maker-bootstrapper options command
+
+## Commands
+
+- install (default)
+
+    Scaffolds a new project. This is the default command so:
+
+        cpan-maker-bootstrapper -m My::Module
+
+    ...is the same as:
+
+        cpan-maker-bootstrapper -m My::Module install
+
+- create-config
+
+    Outputs a stub configuration file to STDOUT. Create and edit a new
+    config to customize the behavior of `cpan-maker-bootstrapper`.
+
+        cpan-maker-bootstrapper create-config > ~/.cpan-makerrc
+
+    Then set `CPAN_MAKER_CONFIG` to point to it:
+
+        export CPAN_MAKER_CONFIG=$HOME/.cpan-makerrc
 
 ## Options
 
@@ -301,12 +507,12 @@ If you want a different `README.md` generated create a
     specify the primary module that defines the distribution.
 
     _Note: The `Makefile` will automatically attempt to substitute the
-    token `1.0.4` inside your `.pl.in` or `.pm.in` files with
+    token `1.0.5` inside your `.pl.in` or `.pm.in` files with
     the current semantic version in the `VERSION` file. If you want to
     use that for versioning your scripts and modules add the token as
     shown below:_
 
-        our $VERSION = '1.0.4';
+        our $VERSION = '1.0.5';
 
 - `--resources|-r` github
 
@@ -430,12 +636,45 @@ If you want a different `README.md` generated create a
     _Note: The generated modulino is added to the `.gitignore` file if
     it exists._
 
+- **Perl Quality Tools**
+
+    The build system supports optional Perl quality gates controlled via
+    your configuration file. Set the following keys in the `[cpan-maker]`
+    section:
+
+        syntax_checking = on          # enables perl -wc on generated files
+        perltidyrc = ~/.perltidyrc    # enables perltidy stage gate
+        perlcriticrc = ~/.perlcriticrc # enables perlcritic stage gate
+
+    These can be overridden per-run from the command line:
+
+        make SYNTAX_CHECKING=off      # disable syntax checking
+        make PERLTIDYRC=""            # disable tidy gate
+        make PERLCRITICRC=""          # disable critic gate
+
+    Add modules that cannot be syntax-checked outside their runtime
+    environment to `PERLWC_SKIP` in `project.mk`:
+
+        PERLWC_SKIP = bin/startup.pl
+
+    Add inter-module build dependencies to `project.mk` when modules
+    depend on each other at build time:
+
+        lib/Foo/Bar.pm: lib/Foo.pm
+
+    To disable all linting at once:
+
+        make LINT=off
+
+    Or use `make quick` to disable both scanning and linting in one step.
+
 # PREREQUISITES
 
 The following tool(s) must be on your `PATH`:
 
 - `git` - used to read global identity config
 - `make` - GNU make is required to build the project
+- `curl` - used by `make upgrade` to query MetaCPAN
 
 # EXTENDING THE BUILD SYSTEM
 
@@ -460,14 +699,26 @@ will be overwritten if you run `make update`.
 
 Instead, the recommended workflow, should you need to add new make
 targets or control the order of the build based on dependencies is to
-add those to `project.mk`. The bootstrapper's `Makefile` includes
-that file if it exists:
+add those to `project.mk`. All managed build system files live in
+the `.includes/` directory where they are write-protected and clearly
+separated from your project files. The `Makefile` includes them
+automatically and conditionally includes `project.mk` from the
+project root:
 
+    include .includes/perl.mk
+    include .includes/help.mk
+    include .includes/version.mk
+    include .includes/release-notes.mk
+    include .includes/git.mk
+    include .includes/update.mk
+    include .includes/upgrade.mk
     -include project.mk
 
-The leading `-` means make will not complain if `project.mk` does
-not exist. This gives you a sanctioned, upgrade-safe extension point
-for anything project-specific.
+`project.mk` remains in the project root - it is your file, always
+writable, and never touched by `make update`. The leading `-` on
+its include means make will not complain if it does not exist yet.
+This gives you a sanctioned, upgrade-safe extension point for
+anything project-specific.
 
 ## What belongs in project.mk
 
@@ -539,12 +790,13 @@ The following targets manage the lifecycle of the build system itself:
     The following files are managed and may be updated:
 
         Makefile
-        git.mk
-        help.mk
-        update.mk
-        upgrade.mk
-        version.mk
-        release-notes.mk
+        .includes/git.mk
+        .includes/help.mk
+        .includes/update.mk
+        .includes/upgrade.mk
+        .includes/version.mk
+        .includes/perl.mk
+        .includes/release-notes.mk
         modulino.tmpl
 
     Your `project.mk`, `buildspec.yml`, `requires`, `VERSION`, source
@@ -557,6 +809,246 @@ The following targets manage the lifecycle of the build system itself:
 
         make cpanm && make upgrade
 
+# FAQ
+
+## My build is failing with a module not found error during syntax checking
+
+This is almost always a build-time dependency ordering issue. If
+`lib/Foo/Bar.pm` uses `lib/Foo.pm`, make may attempt to build and
+syntax-check `Foo/Bar.pm` before `Foo.pm` exists. Declare the
+dependency in `project.mk`:
+
+    lib/Foo/Bar.pm: lib/Foo.pm
+
+This tells make to build `Foo.pm` first. See ["Inter-module
+dependencies"](#inter-module-dependencies) for details.
+
+If the module genuinely cannot be loaded outside its runtime
+environment (an Apache handler, a mod\_perl module, etc.), add it to
+`PERLWC_SKIP` in `project.mk`:
+
+    PERLWC_SKIP = lib/My/Apache/Handler.pm
+
+## How do I do a fast build during development?
+
+    make quick
+
+This disables dependency scanning and all linting (syntax checking,
+perltidy, perlcritic) for the current build. Your `requires` and
+`test-requires` files are not updated and no quality gates run.
+
+Use `make` without flags when you are ready to do a full build before
+committing or releasing.
+
+You can also disable individual features:
+
+    make SCAN=off          # skip dependency scanning only
+    make LINT=off          # skip all linting only
+    make SYNTAX_CHECKING=off  # skip syntax checking only
+
+## How do I add a new module or script to the project?
+
+Create the source file with the `.pm.in` or `.pl.in` extension in
+the appropriate directory:
+
+    lib/My/New/Module.pm.in
+    bin/my-script.pl.in
+
+The build system discovers them automatically via `find-files` - no
+changes to the Makefile are required. The next `make` will include
+them in the dependency scan and the distribution.
+
+## How do I include additional files in the distribution?
+
+Edit `buildspec.yml` and add entries to the `extra-files` section:
+
+    extra-files:
+      - ChangeLog
+      - README.md
+      - share:
+        - my-config-template.yml
+        - my-data-file.json
+
+Files listed under `share:` are installed into the distribution's
+share directory and can be accessed at runtime via
+[File::ShareDir](https://metacpan.org/pod/File%3A%3AShareDir).
+
+## I want to pin a version or add a module the scanner missed
+
+Edit `requires` directly. Prefix the module name with `+` to make
+the entry sticky - it will survive all subsequent rescans even if the
+scanner no longer detects it:
+
+    +My::Required::Module 1.5
+
+To pin a version without making the entry sticky, just set the version
+number. The scanner will preserve your version if it detects a
+different one on subsequent builds:
+
+    Some::Module 2.0
+
+These two mechanisms are independent - `+` controls survivability,
+the version number controls what version is required. See ["Dependencies"](#dependencies)
+for full details.
+
+## I want to exclude a module the scanner found
+
+Create a `requires.skip` file in the project root with one module
+name per line:
+
+    My::Own::Module
+    Some::Transitive::Dep
+
+The scanner will never add these to `requires`. Use
+`test-requires.skip` for the same effect on test dependencies.
+
+Note that on a clean first build neither skip file has any effect
+since there is no prior `requires` file to compare against. The skip
+list takes effect from the second build onward.
+
+## I edited a .pm file and my changes disappeared
+
+The `.pm` files in `lib/` are generated from the `.pm.in` sources
+and are write-protected. Always edit the `.pm.in` file - the `.pm`
+is regenerated on every `make` and your changes will be lost.
+
+If you are unsure which file to edit:
+
+    ls -l lib/My/Module.pm lib/My/Module.pm.in
+
+The `.pm.in` file is the one you own.
+
+## make update overwrote something I changed in a managed file
+
+The managed files in `.includes/` should never be edited directly -
+that is what `project.mk` is for. However if you did modify a managed
+file and `make update` overwrote it, git has you covered:
+
+    git diff .includes/perl.mk
+    git checkout .includes/perl.mk
+
+This is why `make git` and committing your `.includes/` directory is
+strongly recommended - git is your safety net for the entire build
+system.
+
+## make says nothing to do but my source changed
+
+The most common cause is that the generated `.pm` file is newer than
+the `.pm.in` source. This can happen if you accidentally edited the
+`.pm` directly or if file timestamps got out of sync. Force a rebuild:
+
+    touch lib/My/Module.pm.in
+
+Or do a clean rebuild:
+
+    make clean && make
+
+## How do I disable scanning temporarily?
+
+    make SCAN=off
+
+This skips the dependency scan entirely for that run - useful when
+you have many modules and want a fast build during active development.
+The default is `SCAN=ON`.
+
+## How do I disable syntax checking temporarily?
+
+    make SYNTAX_CHECKING=off
+
+Similarly you can disable individual quality gates:
+
+    make PERLTIDYRC="" PERLCRITICRC=""
+
+## How do I upgrade the build system?
+
+    make upgrade
+
+This checks MetaCPAN for a newer version of
+`CPAN::Maker::Bootstrapper`, installs it via `cpanm`, and
+automatically refreshes the managed files in `.includes/` with
+`make update`. Review the changes with `git diff` and revert
+anything you don't want with `git checkout`.
+
+If `cpanm` is not installed:
+
+    make cpanm && make upgrade
+
+## I want to add a bash script to my distribution
+
+Create the script in `bin/` with a `.sh.in` extension:
+
+    bin/my-script.sh.in
+
+The build system will process it through the standard token
+substitution (replacing `1.0.5` and `CPAN::Maker::Bootstrapper`),
+make it executable, and include it in the distribution automatically.
+
+If your script is more than a few lines of bash, consider writing it
+as a _modulino_ instead - a Perl module that doubles as a runnable
+script. Modulinos are easier to test, encourage encapsulation, and
+give you the full power of Perl and CPAN. The build system has
+first-class support for them:
+
+    make modulino
+
+This generates a bash wrapper in `bin/` that invokes your module as
+a script if it uses the modulino pattern:
+
+    caller or __PACKAGE__->main;
+
+See ["Modulinos"](#modulinos) for full details.
+
+## What is `make release-notes` used for?
+
+`make release-notes` generates three artifacts comparing the current
+working state of your repository against the previous git tag:
+
+- `release-<version>.diffs` - a unified diff of all
+changed files
+- `release-<version>.lst` - a list of added, modified,
+and removed files
+- `release-<version>.tar.gz` - a tarball containing
+only the changed files
+
+These are primarily useful for generating release notes and changelogs,
+and for submitting targeted patches. Run it after bumping the version
+with `make release`, `make minor`, or `make major` and before
+publishing to CPAN:
+
+    make minor
+    make release-notes
+    # review release-1.1.0.diffs
+    make
+
+The artifacts are all the clues needed for LLMs to produce accurate
+and well written release notes for your project.
+
+The release artifacts are cleaned up by `make clean`.
+
+## Something still doesn't work - how do I report an issue?
+
+First check the ["FAQ"](#faq) sections above - your
+issue may already be covered.
+
+If you believe you have found a bug or want to request a feature,
+please open an issue on GitHub:
+
+    https://github.com/rlauer6/CPAN-Maker-Bootstrapper/issues
+
+When reporting a bug please include:
+
+- The version of `CPAN::Maker::Bootstrapper` (`cpan-maker-bootstrapper --version`
+or `perl -MCPAN::Maker::Bootstrapper -e 'print $CPAN::Maker::Bootstrapper::VERSION'`)
+- The output of `make -n` or `make --debug=v` if the issue is
+build-related
+- Your `buildspec.yml` and `project.mk` if relevant (redact
+any sensitive information)
+- The Perl and GNU make versions (`perl --version`, `make --version`)
+- **MAKE SURE YOUR SUBMISSION DOES NOT CONTAIN SECRETS!**
+
+Pull requests are welcome. The project follows the standard GitHub
+fork-and-PR workflow.
+
 # SEE ALSO
 
 [CPAN::Maker](https://metacpan.org/pod/CPAN%3A%3AMaker) - the distribution builder driven by `buildspec.yml`
@@ -567,7 +1059,10 @@ optionally by generated CLI module stubs
 
 [CPAN::Maker::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3AConfigReader) - the git config reader bundled with this
 distribution, available for use in your own
-tools. `CPAN::Maker::GitConfigReader` retained as an alias.
+tools.
+
+[Module::ScanDeps::Static](https://metacpan.org/pod/Module%3A%3AScanDeps%3A%3AStatic) - the static dependency scanner used by
+`make requires` and `make test-requires` to analyze your source files
 
 # AUTHOR
 

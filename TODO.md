@@ -2,7 +2,14 @@
 
 # 1.0.5
 
-[ ]
+* [*] Split CPAN::Maker::ConfigReader into its own module and distribution file
+* [*] Bootstrapper uses --config || CPAN_MAKER_CONFIG env var || ~/.gitconfig
+* [*] CPAN_MAKER_CONFIG make variable flows into $(shell ...) config reader calls
+* [*] perl.mk with ifeq-gated pattern rules
+* [*] SYNTAX_CHECKING, PERLTIDYRC, PERLCRITICRC make variables via ConfigReader
+* [*] PERLINCLUDE defaulting to -I lib
+* [*] PERLWC_SKIP escape hatch documented in project.mk section
+* [ ] Update ConfigReader entry in SEE ALSO to reflect promoted status
 
 # 1.0.4
 

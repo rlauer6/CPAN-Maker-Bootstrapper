@@ -8,7 +8,7 @@ SHELL := /bin/bash
 
 VERSION := $(shell test -e VERSION || echo 1.0.0 > VERSION; cat VERSION)
 
-MODULE_NAME  ?= $(shell SOURCE=$(top_srcdir) perl -MCwd=abs_path -MFile::Basename=basename -e '$$m=basename(abs_path($$ENV{SOURCE})); $$m =~s/\-/::/g; print $$m')
+MODULE_NAME  ?= $(shell SOURCE=$(pwd) perl -MCwd=abs_path -MFile::Basename=basename -e '$$m=basename(abs_path($$ENV{SOURCE})); $$m =~s/\-/::/g; print $$m')
 
 MODULE_PATH = lib/$(shell echo $(MODULE_NAME) | perl -npe 's/::/\//g;').pm
 
@@ -33,6 +33,7 @@ BUILDSPEC_TEMPLATE := $(shell perl -MFile::ShareDir=dist_file -e 'print dist_fil
 
 UNIT_TEST_TEMPLATE := $(shell perl -MFile::ShareDir=dist_file -e 'print dist_file(q{CPAN-Maker-Bootstrapper}, q{test.t.tmpl});' 2>/dev/null || echo test.t.tmpl )
 
+
 SCAN ?= ON
 
 define find-files
@@ -46,29 +47,13 @@ $(eval $(call find-files,SOURCE_FILES,lib bin,*.p[ml].in))
 
 POD_MODULES = $(PERL_MODULES:.pm=.pod)
 
-%.pm: %.pm.in
-	@module_tmp="$$(mktemp)"; \
-	local_cleanfiles="$$module_tmp"; \
-	trap 'rm -f $$local_cleanfiles' EXIT; \
-	sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
-	    -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' $< >"$$module_tmp";  \
-	if [[ "$$POD" =~ ^(extract|remove)$  ]]; then \
-	  nopod_tmp="$$(mktemp)"; \
-	  local_cleanfiles="$$local_cleanfiles $$nopod_tmp"; \
-	  if [[ "$$POD" = "extract" ]]; then \
-	    podout="$@"; podout="$${podout%.pm}.pod"; \
-	  else \
-	    podout="/dev/null"; \
-	  fi; \
-	  $(PODEXTRACT) -i "$$module_tmp" -o "$$nopod_tmp" -p "$$podout"; \
-	  cp "$$nopod_tmp" "$$module_tmp"; \
-	fi; \
-	cp "$$module_tmp" "$@"; \
+TARBALL = $(PROJECT_NAME)-$(VERSION).tar.gz
 
-bin/%.pl: bin/%.pl.in
-	@sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
-	    -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' < $< > $@; \
-	chmod +x $@
+.DEFAULT_GOAL := all
+
+all: $(TARBALL) ## builds distribution tarball and dependencies
+
+include .includes/perl.mk
 
 bin/%.sh: bin/%.sh.in
 	@sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
@@ -80,7 +65,9 @@ bin/%: bin/%.in
 	    -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' < $< > $@; \
 	chmod +x $@
 
-TARBALL = $(PROJECT_NAME)-$(VERSION).tar.gz
+.PHONY: quick
+quick:
+	@$(MAKE) SCAN=off LINT=off
 
 DEPS = \
     buildspec.yml \
@@ -93,9 +80,9 @@ DEPS = \
     $(UNIT_TEST_NAME) \
     ChangeLog
 
-all: $(TARBALL) ## builds distribution tarball and dependencies
-
-$(TARBALL): $(DEPS)
+$(TARBALL): $(DEPS) \
+    $(if $(tidy_on), $(PERL_MODULES:%=%.tdy) $(PERL_BIN_FILES:%=%.tdy)) \
+    $(if $(critic_on), $(PERL_MODULES:%=%.crit) $(PERL_BIN_FILES:%=%.crit))
 	$(MAKE_CPAN_DIST) -b $<
 
 module.pm.tmpl:
@@ -260,23 +247,14 @@ buildspec.yml: | $(BUILDSPEC_TEMPLATE)
 	fi; \
 	cp $$buildspec $@;
 
-include help.mk
+include .includes/git.mk
+include .includes/help.mk
+include .includes/release-notes.mk
+include .includes/update.mk
+include .includes/upgrade.mk
+include .includes/version.mk
 
-include version.mk
-
-include release-notes.mk
-
-include git.mk
-
-include update.mk
-
-include upgrade.mk
-
-# custom make rules
--include project.mk
-
-CLEANFILES = \
-    README.md \
+CLEANFILES += \
     $(BIN_FILES) \
     $(PERL_MODULES) \
     $(POD_MODULES) \

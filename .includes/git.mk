@@ -6,8 +6,6 @@ BIN_FILES_IN = $(BIN_FILES:=.in)
 RECOMMENDED_ARTIFACTS = \
      README.md \
      Makefile \
-     version.mk \
-     release-notes.mk \
      $(PERL_MODULES_IN) \
      $(BIN_FILES_IN) \
      $(TESTS) \
@@ -16,7 +14,8 @@ RECOMMENDED_ARTIFACTS = \
      VERSION \
      requires \
      test-requires \
-     .gitignore
+     .gitignore \
+     .includes/*
 
 .PHONY: git
 git: ## initializes a git repository and commits the recommended artifacts

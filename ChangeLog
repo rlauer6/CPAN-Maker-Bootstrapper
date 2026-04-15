@@ -1,3 +1,38 @@
+Wed Apr 15 13:32:16 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[1.0.5]:
+	* .includes/git.mk: renamed, update RECOMMENDED_ARTIFACTS
+	* .includes/help.mk: renamed
+	* .includes/release-notes.mk: renamed
+	* .includes/update.mk
+	- renamed
+	- add perl.mk to MANAGED_FILES
+	- update files to .includes/ directory now
+	* .includes/upgrade.mk: renamed
+	* .includes/version.mk: renamed
+	* .includes/perl.mk: modified
+	* .includes/update.mk: modified
+	* MANIFEST: add update.mk, upgrade.mk, perl.mk
+	* Makefile
+	- move pattern rules to perl.mk to support linting
+	- add .DEFAULT_GOAL, make sure TARBALL defined before target all
+	- use $(pwd) for SOURCE when defining MODULE_NAME
+	- include .mk files from .includes directory
+	- CLEANFILES += so we don't clobber CLEANFILES from perl.mk
+	* README.md: generated
+	* TODO.md: updated
+	* VERSION: bump
+	* buildspec.yml: update .mk list
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- removed CPAN::Maker::ConfigReader to new file
+	- POD updates
+	(cmd_create_config): new
+	(cmd_install): install .mk files to .includes/
+	(main): +cmd_install
+	* project.mk: new
+	* lib/CPAN/Maker/ConfigReader.pm.in: new
+	* .includes/perl.mk: new
+
 Wed Apr 15 07:34:50 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[1.0.4]:
