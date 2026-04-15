@@ -12,6 +12,10 @@
   * [Options](#options)
   * [Notes](#notes)
 * [PREREQUISITES](#prerequisites)
+* [EXTENDING THE BUILD SYSTEM](#extending-the-build-system)
+  * [What belongs in project.mk](#what-belongs-in-projectmk)
+  * [What does NOT belong in project.mk](#what-does-not-belong-in-projectmk)
+  * [Keeping the build system up to date](#keeping-the-build-system-up-to-date)
 * [SEE ALSO](#see-also)
 * [AUTHOR](#author)
 * [LICENSE](#license)
@@ -297,12 +301,12 @@ If you want a different `README.md` generated create a
     specify the primary module that defines the distribution.
 
     _Note: The `Makefile` will automatically attempt to substitute the
-    token `1.0.3` inside your `.pl.in` or `.pm.in` files with
+    token `1.0.4` inside your `.pl.in` or `.pm.in` files with
     the current semantic version in the `VERSION` file. If you want to
     use that for versioning your scripts and modules add the token as
     shown below:_
 
-        our $VERSION = '1.0.3';
+        our $VERSION = '1.0.4';
 
 - `--resources|-r` github
 
@@ -432,6 +436,126 @@ The following tool(s) must be on your `PATH`:
 
 - `git` - used to read global identity config
 - `make` - GNU make is required to build the project
+
+# EXTENDING THE BUILD SYSTEM
+
+The bootstrapper's `Makefile` is intended to be immutable and work
+across all of the projects that use `CPAN::Maker::Bootstrapper`. Our
+goal is to keep `Makefile` working for you even when we make updates
+to the bootstrapper.
+
+However, you own `Makefile` and are free to do with it as you
+please. But we strongly advise that you read the sections below and
+follow the _recipe_ as the saying goes, to use and update the build
+system as it was intended.
+
+The installed `Makefile` is a managed file - it can be updated by
+using the `make` target `update` when a new version of
+`CPAN::Maker::Bootstrapper` is released.
+
+    make update
+
+You are strongly advised not to modify the `Makefile` - your changes
+will be overwritten if you run `make update`.
+
+Instead, the recommended workflow, should you need to add new make
+targets or control the order of the build based on dependencies is to
+add those to `project.mk`. The bootstrapper's `Makefile` includes
+that file if it exists:
+
+    -include project.mk
+
+The leading `-` means make will not complain if `project.mk` does
+not exist. This gives you a sanctioned, upgrade-safe extension point
+for anything project-specific.
+
+## What belongs in project.mk
+
+- Custom targets
+
+    Any target specific to your project - generating assets, running
+    linters, deploying, sending notifications:
+
+        .PHONY: deploy
+        deploy: all
+            scp $(TARBALL) user@myserver:/opt/cpan
+
+- Inter-module dependencies
+
+    If your modules have build-time dependencies on each other, declare
+    them here rather than modifying the Makefile:
+
+        lib/Foo/Bar.pm: lib/Foo.pm
+
+- Additional file generation
+
+    If your project generates code or configuration from templates beyond
+    what the standard Makefile handles:
+
+        lib/Foo/Generated.pm.in: schema/foo.json
+            perl bin/generate-module.pl $< > $@
+
+- Project-specific variables
+
+        DEPLOY_HOST = myserver.example.com
+        DEPLOY_PATH = /opt/cpan/incoming
+
+- Extending CLEANFILES
+
+    Add project-specific generated files to the cleanup target by
+    appending to `CLEANFILES`:
+
+        CLEANFILES += mygenerated.pm config/generated.yml
+
+## What does NOT belong in project.mk
+
+- Modifications to existing targets like `all`, `clean`, `requires`
+- Changes to `DEPS`, `CLEANFILES`, or other core variables - these
+are owned by the managed Makefile
+- Anything that duplicates logic already in the managed Makefile
+
+## Keeping the build system up to date
+
+The following targets manage the lifecycle of the build system itself:
+
+- `make check-upgrade` / `make upgrade-check`
+
+    Checks MetaCPAN to see if a newer version of
+    `CPAN::Maker::Bootstrapper` is available.
+
+- `make upgrade`
+
+    Checks MetaCPAN, installs the latest version via `cpanm`, then
+    automatically runs `make update` to refresh the managed project
+    files.
+
+- `make update`
+
+    Copies the managed files from the currently installed bootstrapper
+    distribution into your project directory. After running, use
+    `git diff` to review what changed and `git checkout <file>`
+    to revert any changes you don't want.
+
+    The following files are managed and may be updated:
+
+        Makefile
+        git.mk
+        help.mk
+        update.mk
+        upgrade.mk
+        version.mk
+        release-notes.mk
+        modulino.tmpl
+
+    Your `project.mk`, `buildspec.yml`, `requires`, `VERSION`, source
+    files and tests are **never** touched by `make update`.
+
+- `make cpanm`
+
+    Installs `cpanminus` if it is not already available on your
+    `PATH`. Required for `make upgrade` to work:
+
+        make cpanm && make upgrade
 
 # SEE ALSO
 

@@ -1,8 +1,16 @@
 # TODOs
 
+# 1.0.5
+
+[ ]
+
 # 1.0.4
-* [ ] --list-stubs
-* [ ] new stubs, mod_perl handler?
+
+* [x] make update / update.mk
+* [x] make upgrade / upgrade.mk
+* [x] -include project.mk
+* [x] Extending the build system documentation
+* [x] make cpanm
 
 # 1.0.3
 

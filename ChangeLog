@@ -1,3 +1,18 @@
+Wed Apr 15 07:34:50 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[1.0.4]:
+	* release-note-1.0.4.md: new
+	* VERSION: bump
+	* README.md: generated
+	* Makefile
+	- conditionally add project.mk (custom make rules)
+	- include new update.mk, upgrade.mk
+	* upgrade.mk: new
+	* update.mk: new
+	* TODO.md: modified
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- modify POD with new EXTENDING THE BUILD SYSTEM section
+
 Tue Apr 14 08:02:13 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[1.0.3]:

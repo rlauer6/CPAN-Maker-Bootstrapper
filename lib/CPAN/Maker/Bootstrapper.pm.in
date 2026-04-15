@@ -891,6 +891,141 @@ The following tool(s) must be on your C<PATH>:
 
 =back
 
+=head1 EXTENDING THE BUILD SYSTEM
+
+The bootstrapper's F<Makefile> is intended to be immutable and work
+across all of the projects that use C<CPAN::Maker::Bootstrapper>. Our
+goal is to keep F<Makefile> working for you even when we make updates
+to the bootstrapper.
+
+However, you own F<Makefile> and are free to do with it as you
+please. But we strongly advise that you read the sections below and
+follow the I<recipe> as the saying goes, to use and update the build
+system as it was intended.
+
+The installed F<Makefile> is a managed file - it can be updated by
+using the C<make> target C<update> when a new version of
+C<CPAN::Maker::Bootstrapper> is released.
+
+ make update
+
+You are strongly advised not to modify the F<Makefile> - your changes
+will be overwritten if you run C<make update>.
+
+Instead, the recommended workflow, should you need to add new make
+targets or control the order of the build based on dependencies is to
+add those to F<project.mk>. The bootstrapper's F<Makefile> includes
+that file if it exists:
+
+ -include project.mk
+
+The leading C<-> means make will not complain if F<project.mk> does
+not exist. This gives you a sanctioned, upgrade-safe extension point
+for anything project-specific.
+
+=head2 What belongs in project.mk
+
+=over 4
+
+=item Custom targets
+
+Any target specific to your project - generating assets, running
+linters, deploying, sending notifications:
+
+ .PHONY: deploy
+ deploy: all
+     scp $(TARBALL) user@myserver:/opt/cpan
+
+=item Inter-module dependencies
+
+If your modules have build-time dependencies on each other, declare
+them here rather than modifying the Makefile:
+
+ lib/Foo/Bar.pm: lib/Foo.pm
+
+=item Additional file generation
+
+If your project generates code or configuration from templates beyond
+what the standard Makefile handles:
+
+ lib/Foo/Generated.pm.in: schema/foo.json
+     perl bin/generate-module.pl $< > $@
+
+=item Project-specific variables
+
+ DEPLOY_HOST = myserver.example.com
+ DEPLOY_PATH = /opt/cpan/incoming
+
+=item Extending CLEANFILES
+
+Add project-specific generated files to the cleanup target by
+appending to C<CLEANFILES>:
+
+ CLEANFILES += mygenerated.pm config/generated.yml
+
+=back
+
+=head2 What does NOT belong in project.mk
+
+=over 4
+
+=item * Modifications to existing targets like C<all>, C<clean>, C<requires>
+
+=item * Changes to C<DEPS>, C<CLEANFILES>, or other core variables - these
+are owned by the managed Makefile
+
+=item * Anything that duplicates logic already in the managed Makefile
+
+=back
+
+=head2 Keeping the build system up to date
+
+The following targets manage the lifecycle of the build system itself:
+
+=over 4
+
+=item C<make check-upgrade> / C<make upgrade-check>
+
+Checks MetaCPAN to see if a newer version of
+C<CPAN::Maker::Bootstrapper> is available.
+
+=item C<make upgrade>
+
+Checks MetaCPAN, installs the latest version via C<cpanm>, then
+automatically runs C<make update> to refresh the managed project
+files.
+
+=item C<make update>
+
+Copies the managed files from the currently installed bootstrapper
+distribution into your project directory. After running, use
+C<git diff> to review what changed and C<git checkout E<lt>fileE<gt>>
+to revert any changes you don't want.
+
+The following files are managed and may be updated:
+
+ Makefile
+ git.mk
+ help.mk
+ update.mk
+ upgrade.mk
+ version.mk
+ release-notes.mk
+ modulino.tmpl
+
+Your F<project.mk>, F<buildspec.yml>, F<requires>, F<VERSION>, source
+files and tests are B<never> touched by C<make update>.
+
+=item C<make cpanm>
+
+Installs C<cpanminus> if it is not already available on your
+C<PATH>. Required for C<make upgrade> to work:
+
+ make cpanm && make upgrade
+
+=back
+
+
 =head1 SEE ALSO
 
 L<CPAN::Maker> - the distribution builder driven by C<buildspec.yml>

@@ -268,6 +268,13 @@ include release-notes.mk
 
 include git.mk
 
+include update.mk
+
+include upgrade.mk
+
+# custom make rules
+-include project.mk
+
 CLEANFILES = \
     README.md \
     $(BIN_FILES) \
