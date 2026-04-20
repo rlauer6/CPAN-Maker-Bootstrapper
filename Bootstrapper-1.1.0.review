@@ -1,0 +1,124 @@
+{
+   "confirmations" : [
+      {
+         "description" : "Atomic install via tmpdir + rename is correctly implemented: all work happens in tmpdir, existing installdir is only removed after success, and rename is the final step.",
+         "id" : 1,
+         "function" : "cmd_install"
+      },
+      {
+         "description" : "Disposition validation correctly uppercases the input and checks against the $DISPOSITIONS hash before calling _set_finding_disposition.",
+         "id" : 2,
+         "function" : "_annotate"
+      },
+      {
+         "id" : 3,
+         "description" : "Correctly returns TRUE when review is undef or findings array is empty, and correctly uses none{} to detect any finding with an undefined disposition.",
+         "function" : "_check_annotation_dispositions"
+      },
+      {
+         "function" : "cmd_install",
+         "id" : 4,
+         "description" : "Module name validation regex correctly requires each component to start with an alpha character followed by word characters, joined by '::', which matches valid Perl package names."
+      },
+      {
+         "id" : 5,
+         "description" : "MANIFEST entry validation regex correctly enforces that entries are relative paths with alphanumeric-starting components, preventing traversal via the distribution's own MANIFEST.",
+         "function" : "_install_files"
+      },
+      {
+         "description" : "Fallback from llm_rsp->usage to raw_content JSON decode is correctly guarded; missing usage data causes early return rather than a crash.",
+         "id" : 6,
+         "function" : "_print_token_usage"
+      }
+   ],
+   "findings" : [
+      {
+         "function" : "_get_latest_review",
+         "disposition" : "REJECT",
+         "description" : "glob pattern constructed from unsanitized basename may match unintended files",
+         "id" : 1,
+         "detail" : "The variable $name is derived from basename($file) with the extension stripped. If the filename contains glob metacharacters (e.g., brackets, question marks, asterisks), the glob could expand in unintended ways, potentially matching wrong files or leaking directory contents. A filename like 'foo[bar]' would cause the glob to interpret '[bar]' as a character class. The result is then parsed as JSON via slurp, so a mismatched file could cause a confusing error or, in a shared directory, expose content from another file. Since this is a developer CLI tool the risk is moderate rather than high, but the basename should have metacharacters escaped before interpolation into the glob string.",
+         "excerpt" : "my ($review_file) = reverse sort { $a cmp $b } glob \"${name}*.code\";",
+         "severity" : "medium"
+      },
+      {
+         "severity" : "medium",
+         "excerpt" : "rename $tempfile, $review_file\n    or die \"ERROR: could not save $review_file\\n$OS_ERROR\\n\";",
+         "detail" : "The guard `die \"ERROR: nothing to annotate. No review file found.\\n\" if !$review_file;` is present in the code and correctly catches the undef $review_file case before the tempfile is created or renamed. Finding marked ACCEPT indicates a fix was applied; the guard is confirmed present and correct.",
+         "id" : 2,
+         "description" : "tempfile written and renamed to review_file without verifying review_file came from a valid review",
+         "disposition" : "ACCEPT",
+         "function" : "cmd_annotate"
+      },
+      {
+         "description" : "VERSION file read without checking existence; regex may produce empty final filename",
+         "disposition" : "ACCEPT",
+         "id" : 3,
+         "function" : "_finalize_annotations",
+         "severity" : "low",
+         "detail" : "The eval wraps slurp but the guard checks `!$VERSION` (the package global constant) rather than `!$version` (the local variable holding the file contents). This means the die is never triggered by a missing or empty VERSION file since $VERSION ('1.1.0') is always truthy. If the file is absent or empty, $version will be undef or empty and the final filename will be malformed. Additionally, if $review_file does not match `/^(.*?)-review/`, $final_review_file becomes undef and the sprintf produces '-<version>.review'. Both conditions need explicit checks.",
+         "excerpt" : "my $version = eval { slurp('VERSION'); };\nchomp $version;\nmy ($final_review_file) = $review_file =~ /^(.*?)-review/xsm;\n$final_review_file = sprintf '%s-%s.review', $final_review_file, $version;"
+      },
+      {
+         "severity" : "low",
+         "detail" : "The $primary value comes from Module::Metadata->packages_inside on user-supplied source files. A maliciously or accidentally crafted package declaration such as 'package ../../etc/cron.d::Foo' could cause path traversal into directories above $installdir/lib/. Although this is a single-user developer tool and the user controls their own source files, a confused-deputy scenario where imported modules are from a third-party source is plausible. The $path should be validated to ensure it does not contain '..' components before make_path and copy are called.",
+         "excerpt" : "my $path = $primary;\n$path =~ s/::/\\//xsmg;\nmy $lib_path = sprintf '%s/lib/%s', $installdir, dirname($path);",
+         "description" : "Destination path for imported modules is constructed from primary package name without sanitization",
+         "disposition" : "REJECT",
+         "id" : 4,
+         "function" : "_import_files"
+      },
+      {
+         "severity" : "low",
+         "id" : 6,
+         "description" : "Comment-stripping regex removes lines beginning with # inside heredocs or string literals in prompt files",
+         "disposition" : "REJECT",
+         "excerpt" : "$prompt =~ s/^#[^\\n]*(?:\\n|\\z)//xsmg;",
+         "detail" : "The regex strips any line beginning with '#' from the assembled prompt text. Prompt files may intentionally contain lines starting with '#' as part of example code, shell snippets, or markdown headings that should be sent to the LLM. The code comment says 'Lines beginning with # are ignored', which is intentional for the .prompt file format, but this is a semantic constraint that is not documented at the point of use and could surprise prompt authors who include markdown headings (e.g., '# Findings') in their prompts. This is noted as low severity because it is likely intentional, but it may produce silently incorrect prompts.",
+         "function" : "_get_review_prompt"
+      },
+      {
+         "severity" : "medium",
+         "detail" : "The eval captures slurp('VERSION') into the lexical $version. The subsequent guard checks the package global $VERSION ('1.1.0'), which is always truthy, so the die is never reached. If the VERSION file is absent, slurp throws inside the eval, $EVAL_ERROR is set, but the guard silently passes and $version is undef. chomp(undef) triggers a warning, and the sprintf for $final_review_file produces a filename like '-1.1.0.review' with a leading dash and no meaningful base name. The fix is to check `!$version` (the lexical) and to verify $EVAL_ERROR after the eval.",
+         "excerpt" : "my $version = eval { slurp('VERSION'); };\n\ndie \"ERROR: could not determin VERSION\\n$EVAL_ERROR\"\n  if !$VERSION;",
+         "disposition" : "ACCEPT",
+         "description" : "Wrong variable checked in VERSION guard: $VERSION (package constant) instead of $version (file contents)",
+         "id" : 7,
+         "function" : "_finalize_annotations"
+      },
+      {
+         "id" : 8,
+         "description" : "api_key captured from get_args but never passed to _cmd_review or _check_llm",
+         "disposition" : "ACCEPT",
+         "function" : "cmd_code_review",
+         "severity" : "low",
+         "excerpt" : "my ( $file, $api_key ) = $self->get_args;\n...\nmy $llm_rsp = $self->_cmd_review(\n    type          => 'code',\n    file          => $file,\n    review        => $review,\n    context_files => $self->get_context,\n);",
+         "detail" : "cmd_code_review extracts $api_key from the argument list but does not include it in the %args hash passed to _cmd_review. Inside _cmd_review, api_key is extracted from %args and passed to _check_llm; since it is undef here, _check_llm falls back to $ENV{LLM_API_KEY} or the llm-api-key-helper. For users who pass the API key as a positional argument to the code-review subcommand (as is documented by the analogous cmd_pod_review and cmd_annotate signatures), the key is silently ignored. cmd_pod_review correctly passes api_key => $api_key; cmd_code_review should do the same."
+      },
+      {
+         "description" : "llm-api-key-helper command executed via qx{} without sanitization; shell injection possible",
+         "disposition" : "REJECT",
+         "id" : 9,
+         "severity" : "medium",
+         "function" : "_check_llm",
+         "detail" : "The value of $helper comes from the config file via $reader->cpan_maker_llm_api_key_helper or from set_llm_api_key_helper. The value is passed directly to qx{} (backtick shell execution) without any quoting or validation. If the config file is writable by another user or process, or if the helper value is constructed from user-supplied input, arbitrary shell commands could be injected. While this is a developer tool and the config file is typically user-controlled, the lack of any sanitization is an architectural concern. The helper string should at minimum be validated to match an expected pattern (e.g., a simple command path with arguments) or executed via a list-form system call rather than a shell string.",
+         "excerpt" : "chomp( $api_key = qx{$helper} );"
+      },
+      {
+         "severity" : "low",
+         "disposition" : "WRONG-RECONSIDER",
+         "description" : "File limit check fires before incrementing counter, causing off-by-one: exactly file_limit files are never sent",
+         "id" : 10,
+         "detail" : "The check `$file_count == $file_limit` is evaluated before `$file_count++` and before adding the current file to @prompt. This means that when $file_count reaches $file_limit the die fires on what would have been the ($file_limit + 1)th file added, so only $file_limit - 1 files are actually pushed to @prompt before the die triggers. Stated differently: on the iteration where $file_count equals $file_limit, the current file has not yet been added, so the error fires one file too early. The increment and push should occur before the check, or the check should use `>= $file_limit` after incrementing. The comment says 'if there are more files than $file_limit we die', which implies the limit should be inclusive.",
+         "excerpt" : "die sprintf \"ERROR: max number of files (%s) in diff listing has been reached...\"\n  if $file_limit && $file_count == $file_limit;\n\n...\n$file_count++;",
+         "function" : "cmd_release_notes"
+      }
+   ],
+   "deferred" : [
+      {
+         "function" : "cmd_install",
+         "id" : 5,
+         "description" : "chdir to tmpdir is not undone on failure; subsequent relative path operations in caller are affected"
+      }
+   ]
+}

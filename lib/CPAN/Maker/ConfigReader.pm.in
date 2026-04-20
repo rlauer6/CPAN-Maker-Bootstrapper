@@ -65,6 +65,14 @@ sub cpan_maker_basedir {
 }
 
 ########################################################################
+sub cpan_maker_max_tokens {
+########################################################################
+  my ($self) = @_;
+
+  return $self->get_value( 'cpan-maker', 'max-tokens' );
+}
+
+########################################################################
 sub cpan_maker_resources {
 ########################################################################
   my ($self) = @_;
@@ -93,7 +101,15 @@ sub cpan_maker_syntax_checking {
 ########################################################################
   my ($self) = @_;
 
-  return $self->get_value( 'cpan-maker', 'syntax_checking' );
+  return $self->get_value( 'cpan-maker', 'syntax-checking' );
+}
+
+########################################################################
+sub cpan_maker_llm_api_key_helper {
+########################################################################
+  my ($self) = @_;
+
+  return $self->get_value( 'cpan-maker', 'llm-api-key-helper' );
 }
 
 1;
@@ -172,11 +188,13 @@ bugtracker URLs when C<--resources github> is specified.
 =head2 [cpan-maker]
 
   [cpan-maker]
-      basedir         = /home/you/git
-      resources       = github
-      syntax_checking = on
-      perltidyrc      = /home/you/.perltidyrc
-      perlcriticrc    = /home/you/.perlcriticrc
+      basedir            = /home/you/git
+      resources          = github
+      syntax-checking    = on
+      perltidyrc         = /home/you/.perltidyrc
+      perlcriticrc       = /home/you/.perlcriticrc
+      llm-api-key-helper = cat ~/.ssh/anthropic-api-key
+      max-tokens         = 4096
 
 =over 4
 
@@ -191,7 +209,7 @@ Controls generation of the F<resources> file. Currently only C<github>
 is supported. Equivalent to passing C<--resources github> on the
 command line.
 
-=item C<syntax_checking>
+=item C<syntax-checking>
 
 Set to C<on> to enable Perl syntax checking during the build via
 C<perl -wc> in the C<%.pm> and C<%.pl> pattern rules. See
@@ -206,6 +224,15 @@ C<perltidy> checking in the build system pattern rules.
 
 Path to a F<.perlcriticrc> configuration file. When set, enables
 C<perlcritic> checking in the build system pattern rules.
+
+=item C<llm-api-key-helper>
+
+A shell command whose output is used as the LLM API key. Executed when
+no key is passed directly and C<LLM_API_KEY> is not set in the environment.
+The command should print the key and nothing else. The file it reads should
+be chmod 600.
+
+Example: cat ~/.ssh/anthropic-api-key
 
 =back
 
@@ -255,13 +282,14 @@ Returns C<github> from the C<[user]> section.
 
 Returns C<basedir> from the C<[cpan-maker]> section.
 
-=head2 cpan_maker_resources
+=head2 cpan_llm_api_key_helper
 
-Returns C<resources> from the C<[cpan-maker]> section.
+Bash snippet or the name of an executable script that provides the LLM
+API key.
 
-=head2 cpan_maker_syntax_checking
+=head2 max-tokens
 
-Returns C<syntax_checking> from the C<[cpan-maker]> section.
+The maxium number of tokens output tokens.
 
 =head2 cpan_maker_perltidyrc
 
@@ -270,6 +298,15 @@ Returns C<perltidyrc> from the C<[cpan-maker]> section.
 =head2 cpan_maker_perlcriticrc
 
 Returns C<perlcriticrc> from the C<[cpan-maker]> section.
+
+=head2 cpan_maker_resources
+
+Returns C<resources> from the C<[cpan-maker]> section.
+
+=head2 cpan_maker_syntax_checking
+
+Returns C<syntax-checking> from the C<[cpan-maker]> section.
+
 
 =head1 ENVIRONMENT
 

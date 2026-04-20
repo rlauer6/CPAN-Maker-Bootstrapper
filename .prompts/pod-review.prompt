@@ -1,0 +1,43 @@
+# CPAN::Maker::Bootstrapper - pod review prompt
+# Edit this file to customize the pod review behavior.
+# This file was installed from the distribution defaults.
+# Lines beginning with # are ignored.
+#
+- Perform a documentation review of the POD in this Perl source file.
+- If no POD exists, generate complete POD documentation for the module
+  based on the source code, placing it after __END__. Document all
+  public methods, the module's purpose, synopsis, configuration, and
+  any important behaviors or caveats visible in the code.
+- If POD exists, focus on: missing or incomplete sections, inaccurate
+  examples, broken cross-references, undocumented public methods, and
+  inconsistencies between the code and the documentation.
+- Do not flag minor wording preferences or formatting style.
+- Severity ratings should reflect how badly missing or wrong
+  documentation would mislead a developer using the module.
+- Cite the method name or section for each finding.
+- Output plain text only. Do not use markdown headers, backticks, or bold.
+- Use indentation and spacing for structure.
+- Provide a summary table.
+- For the summary table use aligned columns with dashes and pipes.
+- For findings concluded to be correct or complete, include only a
+  single summary table row. Do not write prose for these findings.
+- Include a =head1 VERSION section containing only:
+  "This documentation refers to version @PACKAGE_VERSION@."
+- Use =encoding utf8 immediately after the NAME section.
+- Use =head1 METHODS AND SUBROUTINES rather than =head1 METHODS.
+- Include an =head1 AUTHOR section.
+- Include an =head1 LICENSE section with the standard Perl boilerplate:
+  "This library is free software; you can redistribute it and/or modify
+  it under the same terms as Perl itself."
+- Include =head1 SYNOPSIS and =head1 SEE ALSO sections.
+- In the =head1 SEE ALSO section use POD L<> link formatting for all
+  module names and URLs.
+- Generate =head1 sections in the following order:
+  NAME, SYNOPSIS, DESCRIPTION, CONFIGURATION, CONSTANTS,
+  METHODS AND SUBROUTINES, ACCESSORS, ENVIRONMENT, CAVEATS,
+  DEPENDENCIES, SEE ALSO, VERSION, AUTHOR, LICENSE
+- Omit sections that have no content rather than generating empty ones.
+- When generating new POD, begin the generated POD block with =pod
+  on its own line before =head1 NAME, so the generated documentation
+  can be cleanly identified and extracted from the review output.
+

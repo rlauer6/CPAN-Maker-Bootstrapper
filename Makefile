@@ -66,7 +66,7 @@ bin/%: bin/%.in
 	chmod +x $@
 
 .PHONY: quick
-quick:
+quick: ## quick build, turns off scanning, perltidy, perlcritic
 	@$(MAKE) SCAN=off LINT=off
 
 DEPS = \
@@ -240,7 +240,7 @@ buildspec.yml: | $(BUILDSPEC_TEMPLATE)
 	    -e 's/[@]GITHUB_USER[@]/$(GITHUB_USER)/g' \
 	    -e 's/[@]GIT_EMAIL[@]/$(GIT_EMAIL)/g' \
 	    -e 's/[@]PROJECT_NAME[@]/$(PROJECT_NAME)/g' \
-	    -e 's/[@]MIN_PERL_VERSION[@]/$(MIN_PERL_VERSION)/g' $< > $$buildspec; \
+	    -e 's/[@]MIN_PERL_VERSION[@]/$(MIN_PERL_VERSION)/g' $(BUILDSPEC_TEMPLATE) > $$buildspec; \
 	if test -e resources.yml; then \
 	  cat resources.yml >> $$buildspec; \
 	  rm resources.yml; \

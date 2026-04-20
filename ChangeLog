@@ -1,3 +1,65 @@
+Mon Apr 20 04:40:24 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[1.1.0]:
+	* release-notes-1.1.0.md: new
+	* Makefile
+	(buildspec.yml): use $(BUILDSPEC_TEMPLATE) as input, not first dependency
+	* README.md: generated
+	* VERSION: bump
+	* buildspec.yml
+	- +recommend
+	- +.prompts/code-review.prompt, +.prompts/pod-review.prompt
+	* recommends: new
+	* requires.skip: new
+	* requires
+	- +Archiuve::Tar, Email::Valid, JSON::PP, Module::Metadata,
+	- +Readonly, Text::ASCIITable
+	* .gitignore: +*.pod, *-review-*.code
+	* .includes/git.mk
+	(RECOMMMENDED): -README.md, +.includes/, +.prompts/
+	- only add recommended file if it exists
+	* .includes/help.mk: +LINT
+	* .includes/release-notes.mk
+	- allow make release-notes LAST_TAG=
+	* .prompts/code-review.prompt: modified
+	* .prompts/pod-review.prompt: modified
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- new commands: code-review, pod-review, release-notes, annotate
+	- new options: auto-annotate, annotate, context,
+	  finalize-annotations, max-diff-files, prompt, prompt-profile
+	- updated pod for new commands and options
+	(init): set max_diff_files
+	(_get_latest_review): new
+	(_show_annotations): new
+	(_annotate): new
+	(_set_finding_disposition): new
+	(cmd_annotate): new
+	(_finalize_annotations): new
+	(_check_annotation_dispostions): new
+	(_print_token_usage): new
+	(_import_file_listing)
+	- use Module::Metadata for determing packages in file
+	(_init_config)
+	- get resources object from config
+	- get github user from config
+	- get llm_api_key_helper from config
+	- get basedir from config
+	(cmd_code_review): new
+	(cmd_pod_review): new
+	(_cmd_review): new
+	(_strip_pod): new
+	(_get_review_prompt): new
+	(_install_prompts): new
+	(cmd_release_notes): new
+	* lib/CPAN/Maker/ConfigReader.pm.in
+	- updated POD
+	(cpan_maker_llm_api_help): new
+	* .prompts/cli-tool.prompt: new
+	* .prompts/code-review.prompt: new
+	* .prompts/pod-review.prompt: new
+	* Bootstrapper-1.1.0.review: new
+	* t/find-primary-package.t: new
+
 Wed Apr 15 13:32:16 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[1.0.5]:

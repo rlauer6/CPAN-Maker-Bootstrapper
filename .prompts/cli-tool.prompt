@@ -1,0 +1,11 @@
+# cli profile
+- This is a single-user developer CLI tool. Do not flag threats that
+  require the user to attack their own environment or configuration files.
+- Do not flag TOCTOU or race conditions that assume concurrent invocation.
+- Do not flag security concerns about qx{} or system() calls where the
+  input originates from the user's own configuration file.
+- Assume perlcritic and perltidy are enforced; do not flag anything
+  those tools would catch.
+- Do not flag security concerns about files that are part of the
+  installed distribution itself. These are as trusted as the
+  source code.

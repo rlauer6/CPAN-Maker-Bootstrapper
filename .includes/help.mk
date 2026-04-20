@@ -18,4 +18,5 @@ help: ## show this help message
 	@echo "  MODULE_NAME=A::B          override module name derivation"
 	@echo "  MIN_PERL_VERSION=n        minimum Perl version (default: 5.010)"
 	@echo "  MODULINO_NAME=A::B        module name for modulino wrapper (default: MODULE_NAME)"
+	@echo "  LINT=OFF                  disable perlcritic, perltidy checking"
 	@echo ""

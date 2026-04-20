@@ -15,3 +15,5 @@ resources
 bin/cpan-maker-bootstrapper
 *.tdy
 *.crit
+*.pod
+*-review-*.code

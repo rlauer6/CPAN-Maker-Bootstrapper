@@ -2,7 +2,11 @@
 
 release-notes: ## creates release-{version}.diffs, release-{version}.lst and release-{version}.tar.gz used for automatic release note generation
 	@curr_ver=$(VERSION); \
-	last_tag=$$(git tag -l '[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1); \
+	if [[ -n "$$LAST_TAG" ]]; then \
+	  last_tag=$$LAST_TAG; \
+	else \
+	  last_tag=$$(git tag -l '[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1); \
+	fi; \
 	diffs="release-$$curr_ver.diffs"; \
 	diff_list="release-$$curr_ver.lst"; \
 	diff_tarball="release-$$curr_ver.tar.gz"; \

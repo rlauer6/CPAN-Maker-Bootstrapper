@@ -14,8 +14,21 @@
   * [README.md](#readmemd)
 * [USAGE](#usage)
   * [Commands](#commands)
+  * [LLM Commands](#llm-commands)
   * [Options](#options)
   * [Notes](#notes)
+* [THE REVIEW WORKFLOW](#the-review-workflow)
+  * [Overview](#overview)
+  * [Dispositions](#dispositions)
+  * [Diminishing Returns and When to Stop](#diminishing-returns-and-when-to-stop)
+  * [The Release Artifact](#the-release-artifact)
+  * [Cost Management](#cost-management)
+  * [See Also](#see-also)
+* [PROMPT PROFILES](#prompt-profiles)
+  * [Using Profiles](#using-profiles)
+    * [Built-in Profiles](#built-in-profiles)
+    * [Creating Custom Profiles](#creating-custom-profiles)
+    * [Planned Profiles](#planned-profiles)
 * [PREREQUISITES](#prerequisites)
 * [EXTENDING THE BUILD SYSTEM](#extending-the-build-system)
   * [What belongs in project.mk](#what-belongs-in-projectmk)
@@ -132,6 +145,12 @@ To initialize version control and make your first commit:
 See ["EXTENDING THE BUILD SYSTEM"](#extending-the-build-system) for how to customize the build,
 ["Notes"](#notes) for dependency management details, and ["FAQ"](#faq) for common
 questions.
+
+`CPAN::Maker::Bootstrapper` also provides AI-assisted development
+tools via the Anthropic Claude API. These include iterative code review
+with structured finding annotations, POD documentation review and
+**generation**, and AI-generated release notes. See ["LLM Commands"](#llm-commands) and
+["THE REVIEW WORKFLOW"](#the-review-workflow) for details.
 
 # WHY YOU SHOULD CONSIDER USING YET ANOTHER BUILD TOOL
 
@@ -433,7 +452,126 @@ If you want a different `README.md` generated create a
 
         export CPAN_MAKER_CONFIG=$HOME/.cpan-makerrc
 
+## LLM Commands
+
+The following commands require [LLM::API](https://metacpan.org/pod/LLM%3A%3AAPI) to be installed and a valid
+Anthropic API key. Set it in the environment before running any LLM command:
+
+    export LLM_API_KEY=$(cat ~/.ssh/anthropic-api-key)
+
+The key is deleted from the environment immediately after being read and
+is never passed to child processes. See [CPAN::Maker::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3AConfigReader) for
+the `llm-api-key-helper` option which avoids exposing the key in shell
+history entirely.
+
+_SECURITY NOTE: Never pass your API key on the command line where it
+would be visible in shell history and process listings._
+
+- code-review
+
+    Submits a Perl module or script to the LLM for a code review. POD is
+    automatically stripped before submission so token costs reflect code
+    only. The review is written as a JSON file to the current directory.
+
+        cpan-maker-bootstrapper code-review [options] lib/My/Module.pm
+
+    The review file is named:
+
+        <module>-review-<timestamp>.code
+
+    A token usage summary is printed to stderr after the review completes.
+
+    If a review has been completed at least once the annotated review file
+    is automatically sent with your code to re-focus the review. You must
+    annotate the review file before resubmitting. See ["THE REVIEW
+    WORKFLOW"](#the-review-workflow) for details.
+
+    Options specific to code-review:
+
+        --prompt|-p PATH          path to a custom review prompt file
+        --prompt-profile|-P NAME  additive prompt profile (repeatable)
+        --context|-C PATH         context file to submit alongside the review (repeatable)
+
+    _Note: The prompt profile list and the context file list is written
+    to the review output file. On subsequent runs these will be read from
+    the review. You do not need to provide them unless you want to update
+    their values._
+
+- annotate
+
+    Applies disposition tags to findings in the latest review file and
+    displays the current annotation state. Must be run from a project
+    directory (one containing `.includes/`).
+
+        cpan-maker-bootstrapper annotate [options] lib/My/Module.pm
+
+    Without options, displays the current annotation state of the latest
+    review file. With `-a` options, applies the specified dispositions
+    before displaying.
+
+        cpan-maker-bootstrapper annotate lib/My/Module.pm
+        cpan-maker-bootstrapper annotate -a 1:wrong -a 2:reject lib/My/Module.pm
+
+    Options:
+
+        --annotate|-a N:DISPOSITION    apply disposition to finding N (repeatable)
+        --auto-annotate|-A             annotate and immediately submit the next review
+        --finalize-annotations|-F      create versioned release artifact
+
+    Valid dispositions are `accept`, `reject`, `wrong`,
+    `wrong-reconsider`, `defer`, and `confirmed` (case
+    insensitive). See ["THE REVIEW WORKFLOW"](#the-review-workflow) for a description of each.
+
+- pod-review
+
+    Submits a Perl module or script to the LLM for a documentation review.
+    The full file including code is submitted so the LLM can check
+    consistency between implementation and documentation. If no POD exists
+    the LLM generates complete POD documentation ready to paste after
+    `__END__`.
+
+        cpan-maker-bootstrapper pod-review lib/My/Module.pm
+
+    The review file is named:
+
+        <module>-review-<timestamp>.pod
+
+- release-notes
+
+    Generates release notes for a given version using the LLM. Requires
+    the release artifacts produced by `make release-notes`:
+
+        release-<version>.diffs
+        release-<version>.lst
+        release-<version>.tar.gz
+
+    Usage:
+
+        cpan-maker-bootstrapper release-notes <version>
+
+    The generated release notes are written to `release-notes-<version>.md`.
+    Binary files are automatically excluded. Use `--max-diff-files` to
+    cap token consumption on large distributions (default: 50, 0 = unlimited).
+
+- show-finding
+
+    Generates a table with the complete details of a finding.
+
+        cpan-maker-bootstrapper show-finding lib/My/Module.pm 1
+
 ## Options
+
+- `--annotate|-a` N:DISPOSITION
+
+    See ["annotate"](#annotate)
+
+- `--auto-annotate|-A`
+
+    See ["annotate"](#annotate)
+
+- `--finalize-annotations|-F`
+
+    See ["annotate"](#annotate)
 
 - `--basedir|-b` DIR
 
@@ -454,44 +592,25 @@ If you want a different `README.md` generated create a
 
     default: ~/.gitconfig
 
-- `--module|-m` MODULE (required)
+- `--context|-C` PATH
 
-    The Perl module name for the new project, e.g. `My::New::Module`.
-    Used to derive the project directory name, source file path, and
-    tarball name. You can omit this option if you provide a stub file
-    (`--stub path`) that contains a package name that is consistent with
-    the stub's path. For example, if my package is `My::App` and the
-    module's path contains `My/App` then the script will assume your
-    module name is `My::App`.
-
-        cpan-maker-bootstrapper --stub $HOME/workdir/My/App.pm
-
-- `--installdir|-i` DIR
-
-    Directory in which to create the project. Defaults to the current working
-    directory. The directory is created if it does not exist.
-
-    _Note: `--installdir` overrides `--basedir`_.
-
-- `--username|-u` NAME
-
-    Override the author name used in the module stub and `buildspec.yml`.
-    Defaults to `user.name` from your global git config.
+    One or more files to submit with your code review file that provide
+    additional context for the LLM during the review.
 
 - `--email|-e` EMAIL
 
     Override the author email. Defaults to `user.email` from your global
     git config.
 
-- `--github-user|-g` USER
-
-    Override the GitHub username used to construct repository URLs in
-    `buildspec.yml`. Defaults to `user.github` from your global git config.
-
 - `--force|-f`
 
     Overwrite an existing project. Without this flag, the command dies if a
     `Makefile` already exists in the target directory.
+
+- `--github-user|-g` USER
+
+    Override the GitHub username used to construct repository URLs in
+    `buildspec.yml`. Defaults to `user.github` from your global git config.
 
 - `--import|-I` path
 
@@ -507,12 +626,69 @@ If you want a different `README.md` generated create a
     specify the primary module that defines the distribution.
 
     _Note: The `Makefile` will automatically attempt to substitute the
-    token `1.0.5` inside your `.pl.in` or `.pm.in` files with
+    token `@PACKAGE_VERSION@` inside your `.pl.in` or `.pm.in` files with
     the current semantic version in the `VERSION` file. If you want to
     use that for versioning your scripts and modules add the token as
     shown below:_
 
-        our $VERSION = '1.0.5';
+        our $VERSION = 'E<64>PACKAGE_VERSIONE<64>';
+
+- `--installdir|-i` DIR
+
+    Directory in which to create the project. Defaults to the current working
+    directory. The directory is created if it does not exist.
+
+    _Note: `--installdir` overrides `--basedir`_.
+
+- `--max-diff-files` LIMIT
+
+    The number of files inside the tarball that contains the changed files
+    for release notes creation that can be uploaded to the LLM. Set to 0
+    for no limit.
+
+    default: 50
+
+- `--max-tokens|-t` TOKENS
+
+    Maximum number of tokens the LLM may return in a single response.
+    Higher values reduce the risk of truncated reviews on large files.
+
+    default: 4096 (set by [LLM::API](https://metacpan.org/pod/LLM%3A%3AAPI))
+
+- `--module|-m` MODULE (required)
+
+    The Perl module name for the new project, e.g. `My::New::Module`.
+    Used to derive the project directory name, source file path, and
+    tarball name. You can omit this option if you provide a stub file
+    (`--stub path`) that contains a package name that is consistent with
+    the stub's path. For example, if my package is `My::App` and the
+    module path contains `My/App` then the script will assume your
+    module name is `My::App`.
+
+        cpan-maker-bootstrapper --stub $HOME/workdir/My/App.pm
+
+- `--no-color`
+
+    Turns coloring of annotation summary table off.
+
+    default: on
+
+- `--prompt` PATH
+
+    Path to a text file that will be used to prompt the LLM for a code or pod review.
+
+    defaults:
+
+        pod  => .prompts/pod-review.prompt
+        code => .prompts/code-review.prompt
+
+- `--prompt-profile` NAME
+
+    The name of a prompt profile located in the `.prompts` directory. One
+    or more profile names may be specified. You need only provide the name
+    (e.g. cli-tool).
+
+    See ["PROMPT PROFILES"](#prompt-profiles)
 
 - `--resources|-r` github
 
@@ -537,6 +713,11 @@ If you want a different `README.md` generated create a
     `--module` option for details.
 
     When specifying a stub you cannot use the `--import` option.
+
+- `--username|-u` NAME
+
+    Override the author name used in the module stub and `buildspec.yml`.
+    Defaults to `user.name` from your global git config.
 
 ## Notes
 
@@ -598,6 +779,15 @@ If you want a different `README.md` generated create a
     yet, so the raw scanner output becomes the dependency file - meaning
     skip list and pins have no effect until the second run.
 
+- **Import Behavior**
+
+    When the importer creates your project's source tree it will place
+    `.pm` files inside the `/lib` directory and `.pl` files inside the
+    `bin` directory. Your `lib` directory hierarchy will be based on the
+    package names inside those `.pm` files. **If the importer cannot
+    match the filename you are importing with a package inside that file,
+    a warning is generated and the file is skipped.**
+
 - **Modulinos**
 
     A modulino is a Perl file that doubles as a runnable script. The bash
@@ -642,7 +832,7 @@ If you want a different `README.md` generated create a
     your configuration file. Set the following keys in the `[cpan-maker]`
     section:
 
-        syntax_checking = on          # enables perl -wc on generated files
+        syntax-checking = on          # enables perl -wc on generated files
         perltidyrc = ~/.perltidyrc    # enables perltidy stage gate
         perlcriticrc = ~/.perlcriticrc # enables perlcritic stage gate
 
@@ -667,6 +857,235 @@ If you want a different `README.md` generated create a
         make LINT=off
 
     Or use `make quick` to disable both scanning and linting in one step.
+
+# THE REVIEW WORKFLOW
+
+`CPAN::Maker::Bootstrapper` implements a structured iterative code
+review workflow built around JSON review files and developer-applied
+disposition annotations. The workflow converges over several rounds,
+with each round potentially costing less as noise is suppressed and
+findings are resolved.
+
+## Overview
+
+Each review round consists of three steps:
+
+- 1. Run a review
+
+        cpan-maker-bootstrapper code-review \
+          --prompt-profile cli-tool \
+          lib/My/Module.pm
+
+    The review is written to a timestamped `.code` file containing a JSON
+    object with `findings`, `confirmations`, and `deferred` arrays.
+
+- 2. Annotate the findings
+
+        cpan-maker-bootstrapper annotate lib/My/Module.pm
+
+    This displays the current annotation state. Apply dispositions with
+    `-a` options:
+
+        cpan-maker-bootstrapper annotate \
+          -a 1:accept -a 2:wrong -a 3:reject -a 4:defer \
+          lib/My/Module.pm
+
+    You can annotate incrementally across multiple invocations. Each call
+    shows the updated state so you always know what remains.
+
+- 3. Submit the next review
+
+    Once all findings are annotated, simply run the next review. The
+    bootstrapper automatically finds and submits the latest annotated
+    review file:
+
+        cpan-maker-bootstrapper code-review lib/My/Module.pm
+
+    Alternatively, use `--auto-annotate|-A` with the `annotate` command
+    to annotate and immediately resubmit in one step:
+
+        cpan-maker-bootstrapper annotate -a 1:wrong -a 2:reject --auto-annotate \
+          lib/My/Module.pm
+
+    The LLM will honor all dispositions from the prior round, confirm
+    fixes marked `ACCEPT`, carry forward `DEFER` items, and suppress
+    `REJECT` and `WRONG` findings. New findings appear without noise
+    from settled questions.
+
+## Dispositions
+
+Each finding in the annotations file must be given one of the following
+dispositions before the next review can be submitted:
+
+- ACCEPT
+
+    The finding is valid and has been fixed. On the next review the LLM
+    will confirm the fix is present. If the fix is not found the finding
+    will be re-raised.
+
+- REJECT
+
+    The finding has been reviewed and dismissed as inapplicable to this
+    codebase or context. It will not be raised again in subsequent reviews.
+
+- WRONG
+
+    The finding was based on faulty reasoning. The code is correct. The
+    finding will not be re-raised. Use this when the LLM has misread the
+    control flow, misunderstood the design intent, or applied an
+    inappropriate threat model.
+
+- WRONG-RECONSIDER
+
+    Applied automatically at finalization to all findings marked WRONG.
+    On the first review of the next version the LLM will re-examine the
+    specific function and code excerpt carefully. If the prior analysis
+    was still incorrect the finding reverts to WRONG. If the code has
+    changed and the finding is now valid it is raised as a new finding.
+    If the model understands specifically why its prior reasoning was
+    wrong it may mark the finding CONFIRMED.
+
+- DEFER
+
+    The finding is known and acknowledged but not yet addressed. It is
+    carried forward in the `deferred` array of each subsequent review
+    without being treated as a new finding.
+
+- CONFIRMED
+
+    Used for logic confirmations rather than defects. Marks that both the
+    LLM and the developer agree the code is correct.
+
+## Diminishing Returns and When to Stop
+
+Each round tends to surface smaller and more obscure issues as obvious
+findings are resolved. Stop when you see these signals:
+
+- All new findings are LOW severity.
+- The LLM is re-raising findings already marked WRONG or REJECT,
+possibly rephrased.
+- New findings describe edge cases that cannot occur in normal usage.
+
+When all findings have dispositions and no new substantive issues
+appear, the code is ready to ship.
+
+## The Release Artifact
+
+When you are satisfied with the review state, finalize it with
+`--finalize-annotations`:
+
+    cpan-maker-bootstrapper annotate --finalize-annotations \
+      -a 1:wrong -a 2:reject \
+      lib/My/Module.pm
+
+This applies any remaining dispositions, validates that all findings
+are annotated, reads the version from the `VERSION` file, and writes
+the versioned release artifact:
+
+    CPAN-Maker-Bootstrapper-1.1.0-REVIEW.json
+
+This file serves as a code review certification for the release — a
+machine-readable record of every finding examined, every logic
+confirmation made, and every disposition applied before the version
+was published. Commit it to the repository alongside your ChangeLog.
+
+All findings marked WRONG are automatically converted to
+WRONG-RECONSIDER in the release artifact, prompting careful
+re-examination on the first review of the next version rather
+than permanent suppression.
+
+## Cost Management
+
+Typical review costs run $0.05-0.10 per run on a moderately sized
+module with POD stripped. Costs decrease over successive rounds as
+the model spends fewer output tokens re-explaining suppressed findings.
+
+Use `--prompt-profile` to suppress entire classes of noise before
+they reach the annotation file. A well-tuned profile for your
+application type is the highest-leverage cost reduction available.
+
+## See Also
+
+["LLM Commands"](#llm-commands), ["Prompt Profiles"](#prompt-profiles), [CPAN::Maker::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3AConfigReader)
+
+# PROMPT PROFILES
+
+Prompt profiles are additive prompt fragments that customize the review
+behavior for specific application types. They are appended to the base
+review prompt before submission and are intended to focus the review on
+relevant concerns while suppressing noise that does not apply to the
+target context.
+
+## Using Profiles
+
+Pass one or more profiles using the `--prompt-profile` option:
+
+    cpan-maker-bootstrapper code-review --prompt-profile cli-tool MyModule.pm
+
+Multiple profiles may be combined:
+
+    cpan-maker-bootstrapper code-review \
+      --prompt-profile cli-tool \
+      --prompt-profile security \
+      MyModule.pm
+
+Profiles are resolved from the `.prompts/` directory in the current
+project. A profile named `cli-tool` resolves to
+`.prompts/cli-tool.prompt`.
+
+### Built-in Profiles
+
+The following profile is installed with the distribution:
+
+- cli-tool
+
+    Appropriate for single-user developer CLI tools. Suppresses security
+    findings that assume a multi-user or hostile environment, TOCTOU race
+    condition findings that assume concurrent invocation, and concerns about
+    `qx{}` or `system()` calls where input originates from the user's own
+    configuration. Also assumes `perlcritic` and `perltidy` are enforced
+    in the development environment.
+
+### Creating Custom Profiles
+
+A profile is a plain text file in `.prompts/` containing additional
+prompt instructions, one per line. Lines beginning with `#` are treated
+as comments and stripped before submission. Profile instructions use the
+same format as the base review prompt.
+
+Example `.prompts/security.prompt`:
+
+    # security profile - add to any review where input handling matters
+    - Treat all caller-supplied input as untrusted regardless of source.
+    - Flag any use of eval, system, or exec that incorporates external data.
+    - Flag missing taint checks on data used in file or system operations.
+
+### Planned Profiles
+
+The following profiles are planned for future releases:
+
+- library
+
+    Focuses on API contract correctness and caller assumptions. Appropriate
+    for CPAN distributions intended for use by unknown callers.
+
+- web-application
+
+    Treats external input as untrusted. Flags injection risks, authentication
+    gaps, and session handling concerns.
+
+- mod-perl-handler
+
+    Addresses Apache lifecycle concerns including global state, startup versus
+    request time initialization, and child process behavior.
+
+- lambda-function
+
+    Focuses on cold start performance, statelessness, and environment variable
+    handling appropriate for AWS Lambda deployments.
+
+Community contributions of additional profiles are welcome. See
+[https://github.com/rlauer6/CPAN-Maker-Bootstrapper/issues](https://github.com/rlauer6/CPAN-Maker-Bootstrapper/issues).
 
 # PREREQUISITES
 
@@ -980,8 +1399,9 @@ Create the script in `bin/` with a `.sh.in` extension:
     bin/my-script.sh.in
 
 The build system will process it through the standard token
-substitution (replacing `1.0.5` and `CPAN::Maker::Bootstrapper`),
-make it executable, and include it in the distribution automatically.
+substitution (replacing `@PACKAGE_VERSION@` and
+`@MODULE_NAME@`), make it executable, and include it in the
+distribution automatically.
 
 If your script is more than a few lines of bash, consider writing it
 as a _modulino_ instead - a Perl module that doubles as a runnable
@@ -1060,6 +1480,8 @@ optionally by generated CLI module stubs
 [CPAN::Maker::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3AConfigReader) - the git config reader bundled with this
 distribution, available for use in your own
 tools.
+
+[LLM::API](https://metacpan.org/pod/LLM%3A%3AAPI) - client interface to Anthropic's Claude API
 
 [Module::ScanDeps::Static](https://metacpan.org/pod/Module%3A%3AScanDeps%3A%3AStatic) - the static dependency scanner used by
 `make requires` and `make test-requires` to analyze your source files

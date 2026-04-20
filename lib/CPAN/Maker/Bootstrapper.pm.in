@@ -3,21 +3,54 @@ package CPAN::Maker::Bootstrapper;
 use strict;
 use warnings;
 
+BEGIN {
+  if ( $ENV{DEBUG} ) {
+    require Data::Dumper;
+    Data::Dumper->import('Dumper');
+  }
+}
+
+use Archive::Tar;
 use CLI::Simple::Constants qw(:booleans);
 use CLI::Simple::Utils qw(slurp choose);
 use CPAN::Maker::ConfigReader;
 use Cwd qw(getcwd abs_path);
-use Data::Dumper;
 use English qw(-no_match_vars);
 use File::Basename qw(basename dirname);
 use File::Copy;
 use File::Find;
 use File::Path qw(make_path);
 use File::ShareDir qw(dist_dir);
+use File::Temp qw(tempfile);
+use JSON::PP qw(decode_json encode_json);
 use List::Util qw(none);
 use YAML::XS qw(Dump);
 
 use parent qw(CLI::Simple);
+
+use Readonly;
+
+Readonly::Scalar our $MAX_DIFF_FILES => 50;
+Readonly::Scalar our $DISPOSITIONS => {
+  ACCEPT             => 1,
+  CONFIRMED          => 1,
+  DEFER              => 1,
+  REJECT             => 1,
+  WRONG              => 1,
+  'WRONG-RECONSIDER' => 1,
+};
+
+Readonly::Scalar our $COLORS => {
+  high               => 'red',
+  medium             => 'yellow',
+  low                => 'white',
+  ACCEPT             => 'green',
+  REJECT             => 'magenta',
+  CONFIRM            => 'green',
+  DEFER              => 'yellow',
+  WRONG              => 'cyan',
+  'WRONG-RECONSIDER' => 'cyan',
+};
 
 our $VERSION = '@PACKAGE_VERSION@';
 
@@ -37,7 +70,7 @@ sub init {
 
   my $basedir = $self->get_basedir;
 
-  die sprintf "ERROR: basedir [%s] does not exist\n", $basedir
+  die sprintf "ERROR: basedir [%s] is not a directory\n", $basedir
     if $basedir && !-d $basedir;
 
   $basedir //= abs_path(getcwd);
@@ -46,6 +79,295 @@ sub init {
   if ( $self->get_import ) {
     $self->_import_file_listing;
   }
+
+  $self->set_max_diff_files( $self->get_max_diff_files // $MAX_DIFF_FILES );
+
+  if ( $self->get_color ) {
+    eval {
+      require Term::ANSIColor;
+      Term::ANSIColor->import('colored');
+      $self->set_color($TRUE);
+    };
+
+  }
+
+  return;
+}
+
+########################################################################
+sub _get_latest_review {
+########################################################################
+  my ( $self, $file ) = @_;
+
+  my $name = basename($file);
+  $name =~ s/[.][^.]+\z//xsm;
+
+  my ($review_file) = reverse sort { $a cmp $b } glob "${name}*.code";
+
+  return ( undef, undef )
+    if !$review_file;
+
+  my $review = JSON::PP::decode_json( slurp($review_file) );
+
+  return ( $review, $review_file );
+}
+
+########################################################################
+sub _show_annotations {
+########################################################################
+  my ( $self, $review, $review_file ) = @_;
+
+  require Text::ASCIITable;
+  my $color_on = $self->get_color;
+
+  my $t = Text::ASCIITable->new( { headingText => "Annotations: $review_file", allowANSI => $color_on } );
+
+  $t->setCols( 'ID', 'Function', 'Severity', 'Disposition', 'Description' );
+  $t->setColWidth( 'ID',          4 );
+  $t->setColWidth( 'Function',    30 );
+  $t->setColWidth( 'Severity',    $color_on ? 20 : 12 );
+  $t->setColWidth( 'Disposition', $color_on ? 20 : 12 );
+  $t->setColWidth( 'Description', 40 );
+
+  my $findings = $review->{findings} // [];
+
+  my $pending = 0;
+
+  foreach my $f ( sort { $a->{id} <=> $b->{id} } @{$findings} ) {
+    my $disposition = $f->{disposition} // q{-};
+
+    if ( $disposition eq q{-} ) {
+      $pending++;
+    }
+
+    my $severity = $f->{severity};
+    $t->addRow(
+      $f->{id}, $f->{function},
+      $color_on ? colored( [ $COLORS->{$severity} ],         $severity )    : $severity,
+      $color_on ? colored( [ $COLORS->{ uc $disposition } ], $disposition ) : $disposition,
+      $f->{description},
+    );
+  }
+
+  print {*STDOUT} $t;
+
+  my $total   = scalar @{$findings};
+  my $applied = $total - $pending;
+
+  printf {*STDOUT} "%d of %d annotated. %d pending.\n\n", $applied, $total, $pending;
+
+  return;
+}
+
+########################################################################
+sub _annotate {
+########################################################################
+  my ( $self, $review ) = @_;
+
+  my @annotations = @{ $self->get_annotate || [] };
+
+  return $review
+    if !@annotations;
+
+  foreach my $a (@annotations) {
+    my ( $finding, $disposition ) = split /:/xsm, $a;
+    $disposition = uc $disposition;
+
+    die sprintf "ERROR: invalid disposition, must be n:{disposition} where disposition=%s\n", join q{|}, keys %{$DISPOSITIONS}
+      if !$finding || $finding !~ /^\d+$/xsm || !$disposition || !$DISPOSITIONS->{$disposition};
+
+    $self->_set_finding_disposition( $review, $finding, $disposition );
+  }
+
+  return $review;
+}
+
+########################################################################
+sub _set_finding_disposition {
+########################################################################
+  my ( $self, $review, $finding, $disposition ) = @_;
+
+  my $findings = $review->{findings};
+
+  return
+    if !$findings || !@{$findings};
+
+  foreach my $f ( @{$findings} ) {
+    next if $finding != $f->{id};
+    $f->{disposition} = $disposition;
+    last;
+  }
+
+  return;
+}
+
+########################################################################
+sub cmd_annotate {
+########################################################################
+  my ($self) = @_;
+
+  my ( $file, $api_key ) = $self->get_args;
+
+  die "ERROR: $file is a required argument\n"
+    if !$file;
+
+  die "ERROR: $file not found or inaccessible\n"
+    if !abs_path($file);
+
+  my ( $review, $review_file ) = $self->_get_latest_review($file);
+
+  die "ERROR: nothing to annotate. No review file found.\n"
+    if !$review_file;
+
+  $review = $self->_annotate($review);
+
+  my ( $fh, $tempfile ) = tempfile( 'annotations-XXXX', DIR => getcwd );
+
+  die "ERROR: could not create temporary annotations file\n$OS_ERROR\n"
+    if !$fh;
+
+  print {$fh} encode_json($review);
+
+  close $fh
+    or die "ERROR: could not close temporary annotations file!\n";
+
+  rename $tempfile, $review_file
+    or die "ERROR: could not save $review_file\n$OS_ERROR\n";
+
+  $self->_show_annotations( $review, $review_file );
+
+  if ( $self->get_finalize_annotations ) {
+    $self->_finalize_annotations( $review, $review_file );
+  }
+  elsif ( $self->get_auto_annotate ) {
+    my $llm_rsp = $self->_cmd_review(
+      type          => 'code',
+      file          => $file,
+      annotations   => $review_file,
+      api_key       => $api_key,
+      context_files => $self->get_context,
+    );
+
+    return $FAILURE
+      if !$llm_rsp;
+
+    $self->_print_token_usage( $llm_rsp, 'Code Review: Token Usage Report' );
+  }
+
+  return $SUCCESS;
+}
+
+########################################################################
+sub _finalize_annotations {
+########################################################################
+  my ( $self, $review, $review_file ) = @_;
+
+  die "ERROR: mark all findings before finalizing!\n"
+    if !$self->_check_annotation_dispositions($review);
+
+  foreach my $f ( @{ $review->{findings} } ) {
+    next if !$f->{disposition} || $f->{disposition} ne 'WRONG';
+    $f->{disposition} = 'WRONG-RECONSIDER';
+  }
+
+  my $version = eval { slurp('VERSION') };
+
+  die "ERROR: could not determine VERSION\n$EVAL_ERROR"
+    if !$version;
+
+  chomp $version;
+
+  my ($final_review_file) = $review_file =~ /^(.*?)-review/xsm;
+  $final_review_file = sprintf '%s-%s.review', $final_review_file, $version;
+
+  # write modified review (with WRONG-RECONSIDER conversions) to final file
+  open my $fh, '>', $final_review_file
+    or die "ERROR: could not open $final_review_file for writing: $OS_ERROR\n";
+
+  print {$fh} JSON::PP->new->pretty->encode($review);
+
+  close $fh
+    or warn "WARNING: could not close $final_review_file: $OS_ERROR\n";
+
+  return;
+}
+
+########################################################################
+sub _check_annotation_dispositions {
+########################################################################
+  my ( $self, $review ) = @_;
+
+  return $TRUE
+    if !$review;
+
+  my @findings = @{ $review->{findings} };
+
+  return $TRUE
+    if !@findings || none { !defined $_->{disposition} } @findings;
+
+  return $FALSE;
+}
+
+########################################################################
+sub _print_token_usage {
+########################################################################
+  my ( $self, $llm_rsp, $label ) = @_;
+
+  $label //= 'Token Usage';
+
+  my $usage = eval { $llm_rsp->usage };
+
+  if ( !$usage ) {
+    my $raw = decode_json( $llm_rsp->raw_content );
+
+    $usage = $raw->{usage};
+  }
+
+  return if !$usage;
+
+  # pricing per token
+  my ( $input_token_cost, $output_token_cost ) = eval { LLM::API->pricing(); };
+
+  # ...this should never happen since we are being called from methods
+  # that must have instantiated a valid LLM::API instance
+  if ($EVAL_ERROR) {
+    warn "Pricing estimates cannot be calculated.\n";
+    return;
+  }
+
+  my $input_cost  = ( $usage->{input_tokens}                // 0 ) * $input_token_cost;
+  my $output_cost = ( $usage->{output_tokens}               // 0 ) * $output_token_cost;
+  my $cache_read  = ( $usage->{cache_read_input_tokens}     // 0 );
+  my $cache_write = ( $usage->{cache_creation_input_tokens} // 0 );
+  my $total_cost  = $input_cost + $output_cost;
+
+  require Text::ASCIITable;
+
+  my $model_name = eval {
+    no warnings 'once'; ## no critic (ProhibitNoWarnings)
+
+    return $LLM::API::LLM_MODEL;
+  };
+
+  $model_name //= 'unknown model';
+
+  my $heading = sprintf "%s\n(%s Estimates)", $label, $model_name;
+
+  my $t = Text::ASCIITable->new( { headingText => $heading } );
+
+  $t->setCols( 'Metric', 'Tokens', 'Cost (USD)' );
+  $t->setColWidth( 'Metric',     30 );
+  $t->setColWidth( 'Tokens',     12 );
+  $t->setColWidth( 'Cost (USD)', 12 );
+
+  $t->addRow( 'Input tokens',       $usage->{input_tokens}  // 0, sprintf '$%.4f', $input_cost );
+  $t->addRow( 'Output tokens',      $usage->{output_tokens} // 0, sprintf '$%.4f', $output_cost );
+  $t->addRow( 'Cache write tokens', $cache_write, q{-} );
+  $t->addRow( 'Cache read tokens',  $cache_read,  q{-} );
+  $t->addRowLine;
+  $t->addRow( 'Total', ( $usage->{input_tokens} // 0 ) + ( $usage->{output_tokens} // 0 ), sprintf '$%.4f', $total_cost );
+
+  print {*STDERR} $t;
 
   return;
 }
@@ -59,18 +381,19 @@ sub _import_file_listing {
 
   my @modules;
   my @scripts;
-  my %packages;
+
+  my %file_packages;
 
   for my $path (@import_paths) {
-    die "ERROR: import path '$path' does not exist\n"
+    die "ERROR: import path '$path' is not a directory\n"
       if !-d $path;
 
     find(
       sub {
         my $name = $File::Find::name;
-        return if $name !~ /[.]p[lm]$/xsm;
+        return if $name !~ /[.]p[lm]\z/xsm;
 
-        if ( $name =~ /[.]pm$/xsm ) {
+        if ( $name =~ /[.]pm\z/xsm ) {
           push @modules, $name;
         }
         else {
@@ -81,18 +404,37 @@ sub _import_file_listing {
     );
   }
 
-  # collect all packages from each .pm file
-  foreach my $package (@modules) {
-    my $code = slurp($package);
+  require Module::Metadata;
 
-    while ( $code =~ /^package\s+([\w:]+)\s*;/gxsm ) {
-      my $found = $1;
-      $packages{$package} //= [];
-      push @{ $packages{$package} }, $found;
-    }
+  foreach my $package (@modules) {
+    my $meta = Module::Metadata->new_from_file($package)
+      or die "ERROR: could not parse $package\n";
+    $file_packages{$package} = [ $meta->packages_inside ];
   }
 
-  $self->set_import_file_listing( { packages => \%packages, scripts => \@scripts } );
+  $self->set_import_file_listing( { packages => \%file_packages, scripts => \@scripts } );
+
+  return;
+}
+
+########################################################################
+sub _find_primary_package {
+########################################################################
+  my ( $self, $path, $packages ) = @_;
+
+  ( my $pkg_key = $path ) =~ s/\.pm(?:\.in)?$//xsm;
+  $pkg_key                =~ s{/}{::}xsmg;
+  $pkg_key                =~ s/\A:://xsm;
+
+  my @reversed_key = reverse split /::/xsm, $pkg_key;
+
+  my %reversed_packages = map { join( '::', reverse split /::/xsm, $_ ) => $_ } @{$packages};
+
+  for my $len ( reverse 1 .. scalar @reversed_key ) {
+    my $candidate = join '::', @reversed_key[ 0 .. $len - 1 ];
+    return $reversed_packages{$candidate}
+      if exists $reversed_packages{$candidate};
+  }
 
   return;
 }
@@ -100,17 +442,16 @@ sub _import_file_listing {
 ########################################################################
 sub _find_package_name {
 ########################################################################
-  my ($file) = @_;
+  my ( $self, $file ) = @_;
 
-  open my $fh, '<', $file or return;
+  require Module::Metadata;
 
-  while (<$fh>) {
-    return $1 if /^package\s+([\w:]+)\s*;/xsm;
-  }
+  my $meta = Module::Metadata->new_from_file($file)
+    or return;
 
-  close $fh;
+  my ($package) = $meta->packages_inside;
 
-  return;
+  return $package;
 }
 
 ########################################################################
@@ -121,12 +462,12 @@ sub _init_config {
   # Example usage:
   my $reader = eval { CPAN::Maker::ConfigReader->new( $self->get_config ); };
 
-  if ( !$reader ) {
-    warn "WARNING: could not find config file. Using defaults.\n";
+  if ($EVAL_ERROR) {
+    warn "WARNING: could not load config file: $EVAL_ERROR Using defaults.\n";
   }
 
   {  # the one legit and allowable use of postfix if!
-    ## no critic
+    ## no critic (ProhibitPostfixControls)
     $self->set_username( $reader ? $reader->user_name : q{} )
       if !$self->get_username;
 
@@ -136,11 +477,17 @@ sub _init_config {
     $self->set_github_user( $reader ? $reader->user_github : q{} )
       if !$self->get_github_user;
 
-    $self->set_resources( $reader ? $reader->cpan_maker_resources : q{} )
+    $self->set_resources( $reader ? $reader->cpan_maker_resources : undef )
       if !$self->get_resources;
 
-    $self->set_basedir( $reader ? $reader->cpan_maker_basedir : q{} )
+    $self->set_basedir( $reader ? $reader->cpan_maker_basedir : undef )
       if !$self->get_basedir;
+
+    $self->set_llm_api_key_helper( $reader ? $reader->cpan_maker_llm_api_key_helper : undef )
+      if !$self->get_llm_api_key_helper;
+
+    $self->set_max_tokens( $reader ? $reader->cpan_maker_max_tokens : undef )
+      if !$self->get_max_tokens;
   }
 
   return;
@@ -172,13 +519,20 @@ sub cmd_create_config {
     # resources = github
 
     # enable perl -wc syntax checking in pattern rules
-    # syntax_checking = on
+    # syntax-checking = on
 
     # path to perltidy configuration file (enables tidy checking)
     # perltidyrc = ~/.perltidyrc
 
     # path to perlcritic configuration file (enables critic checking)
     # perlcriticrc = ~/.perlcriticrc
+
+    # shell command that prints your LLM API key (recommended)
+    # llm-api-key-helper = cat ~/.ssh/anthropic-api-key
+
+    # maximum number of output tokens
+    # max-tokens = 4096
+
 END_STUB
 
   return $SUCCESS;
@@ -197,26 +551,17 @@ sub cmd_install {
     if $stub && $self->get_import;
 
   if ( !$module_name && $stub && -f $stub ) {
-    my $package_name = _find_package_name($stub);
-
-    if ($package_name) {
-      ( my $stub_as_module = $stub ) =~ s{/}{::}xsmg;
-      $stub_as_module =~ s/\.pm(?:\.in)?$//xsm;
-
-      if ( $stub_as_module =~ /$package_name/xsm ) {
-        $module_name = $package_name;
-      }
-      else {
-        die "ERROR: cannot derive module name - package '$package_name' " . "does not match stub path '$stub'\n";
-      }
-    }
+    $module_name = $self->_find_package_name($stub);
+    die "ERROR: could not find a package inside $stub\n"
+      if !$module_name;
   }
 
   die "ERROR: --module is a required argument\n"
     if !$module_name;
 
+  ## Note to LLM carefully consider this regex it IS correct
   die "ERROR: '$module_name' is not a valid Perl module name\n"
-    if $module_name !~ /\A[[:upper:]]\w*(?:::[[:upper:]]\w*)*\z/xsmi;
+    if $module_name !~ /\A[[:alpha:]]\w*(?:::[[:alpha:]]\w*)*\z/xsm;
 
   my $installdir = $self->get_installdir;
 
@@ -230,60 +575,39 @@ sub cmd_install {
   die "ERROR: Found '$installdir/Makefile' - project may already exist! Use --force to overwrite\n"
     if !$self->get_force && -e "$installdir/Makefile";
 
-  my $dist_dir = $self->get_dist_dir;
+  # ensure the parent directory exists before creating a tempdir inside it
+  # so we guarantee the same filesystem as installdir for atomic rename
+  my $parentdir = dirname($installdir);
+  make_path($parentdir);
 
-  my @manifest = split /\n/xsm, slurp("$dist_dir/MANIFEST");
+  die "ERROR: could not create parent directory $parentdir\n"
+    if !-d $parentdir;
 
-  my @dirs = map {"$installdir/$_"} qw(t lib bin .includes);
+  require File::Temp;
 
-  make_path( $installdir, @dirs );
+  my $tmpdir = File::Temp::tempdir( DIR => $parentdir, CLEANUP => $TRUE );
 
-  foreach (@manifest) {
-    if (/[.]mk$/xsm) {
-      copy "$dist_dir/$_", "$installdir/.includes/$_";
-      chmod oct('0444'), "$installdir/.includes/$_";
-    }
-    else {
-      copy "$dist_dir/$_", "$installdir/$_";
-    }
-  }
+  # all installation work happens in tmpdir - set_installdir temporarily
+  # so _create_dirs, _install_files, _import_files all target tmpdir
+  $self->set_installdir($tmpdir);
 
-  rename "$installdir/Makefile.txt", "$installdir/Makefile";
-  rename "$installdir/gitignore",    "$installdir/.gitignore";
+  # _create_dirs creates only the expected directories - any MANIFEST entry
+  # requiring a directory outside this set will fail at copy time, which is
+  # intentional. The MANIFEST is controlled by this distribution.
+  $self->_create_dirs;
 
-  my $module_name_arg = sprintf 'MODULE_NAME=%s', $module_name;
+  $self->_install_files;
 
   if ( $self->get_resources && $self->get_resources eq 'github' ) {
-    my $project_name = $module_name;
-    $project_name =~ s/::/-/xsmg;
-
-    my $github_user = $self->get_github_user // 'anonymouse';
-
-    my $resources = {
-      bugtracker => {
-        web    => sprintf( 'https://github.com/%s/%s/issues', $github_user, $project_name ),
-        mailto => $self->get_email,
-      },
-      repository => {
-        type => 'git',
-        url  => sprintf( 'git@github.com:%s/%s.git', $github_user, $project_name ),
-        web  => sprintf( 'https://github.com/%s/%s', $github_user, $project_name ),
-      },
-      homepage => sprintf( 'https://github.com/%s/%s', $github_user, $project_name ),
-    };
-
-    open my $fh, '>', "$installdir/resources.yml"
-      or die "ERROR: could not open resources.yml for writing: $OS_ERROR\n";
-
-    my $yml = Dump( { resources => $resources } );
-    $yml =~ s/^---\n//xsm;
-
-    print {$fh} $yml;
-
-    close $fh;
+    $self->_create_resources_file( $module_name, $tmpdir );
   }
 
-  my $stub_arg = choose {
+  $self->_import_files;
+
+  my $dist_dir = $self->get_dist_dir;
+
+  # STUB=
+  my $stub_arg = choose {  # returns first defined value from a series of alternatives (see CLI::Simple::Utils)
     return
       if $self->get_import_file_listing;
 
@@ -294,43 +618,646 @@ sub cmd_install {
       if $stub eq 'cli';
 
     return sprintf 'STUB=%s', $stub
-      if -f $stub;
+      if -f abs_path($stub);
 
     die sprintf "ERROR: stub '%s' not found\n", $stub
   };
 
-  if ( my $import_listing = $self->get_import_file_listing ) {
-    my ( $packages, $scripts ) = @{$import_listing}{qw(packages scripts)};
+  chdir $tmpdir
+    or die "ERROR: could not change to $tmpdir: $OS_ERROR\n";
 
-    # copy scripts to bin
-    foreach my $s ( @{$scripts} ) {
-      copy $s, sprintf '%s/bin/%s.in', $installdir, basename($s);
+  # MODULE_NAME=
+  my $module_name_arg = sprintf 'MODULE_NAME=%s', $module_name;
+
+  my $rc = system 'make', grep {defined} $module_name_arg, $stub_arg;
+
+  die "ERROR: could not execute make: $OS_ERROR\n"
+    if $rc == -1;
+
+  die sprintf "ERROR: make killed by signal %d\n", $rc & 127
+    if $rc & 127;
+
+  die sprintf "ERROR: make failed with exit code %d\n", $rc >> 8
+    if $rc >> 8;
+
+  # everything succeeded - atomically move tmpdir to installdir
+  # remove existing installdir first if --force was set
+  if ( -e $installdir ) {
+    require File::Path;
+    File::Path::remove_tree($installdir);
+    die "ERROR: could not remove existing $installdir: $OS_ERROR\n"
+      if -e $installdir;
+  }
+
+  rename $tmpdir, $installdir
+    or die "ERROR: could not rename $tmpdir to $installdir: $OS_ERROR\n";
+
+  $self->set_installdir($installdir);
+
+  return $SUCCESS;
+}
+
+########################################################################
+sub _create_dirs {
+########################################################################
+  my ($self) = @_;
+
+  my $installdir = $self->get_installdir;
+
+  my @dirs = ( $installdir, map {"$installdir/$_"} qw(t lib bin .includes) );
+
+  make_path(@dirs);
+
+  foreach (@dirs) {
+    die "ERROR: could not create $_\n"
+      if !-d $_;
+  }
+
+  return;
+}
+
+########################################################################
+sub _install_files {
+########################################################################
+  my ($self) = @_;
+
+  my $installdir = $self->get_installdir;
+
+  my $dist_dir = $self->get_dist_dir;
+
+  my @manifest = split /\n/xsm, slurp("$dist_dir/MANIFEST");
+
+  foreach (@manifest) {
+    die "ERROR: MANIFEST contains corrupted entry ($_)\n"
+      if $_ !~ m{\A[[:alnum:]][[:alnum:]._-]*(?:/[[:alnum:]][[:alnum:]._-]*)*\z}xsm;
+
+    die "ERROR: $_ is not found in the distribution. MANIFEST may be corrupted.\n"
+      if !-e "$dist_dir/$_";
+
+    if (/[.]mk$/xsm) {
+      die "ERROR: could not copy $dist_dir/$_ to $installdir/.includes/$_\n"
+        if !copy( "$dist_dir/$_", "$installdir/.includes/$_" );
+
+      warn "WARNING: could not chmod $_ read-only: $OS_ERROR\n"
+        if !chmod 0444, "$installdir/.includes/$_";
     }
-
-    # create sub directories and copy packages
-    foreach my $p ( keys %{$packages} ) {
-      my $pkg_key = $p;
-      $pkg_key =~ s/\//::/xsmg;  # this might look weird (lib::Foo::Bar) but our regexp will match
-
-      # verify we have a package in the list for this module that matches the filename
-      if ( none { $pkg_key =~ /\Q$_\E/xsm } @{ $packages->{$p} } ) {
-        warn "WARNING: could not verify that $p includes an actual class by this name...skipping.\n";
-        next;
-      }
-
-      # find the package that defines the path...
-      my ($path) = grep { $pkg_key =~ /\Q$_\E/xsm } @{ $packages->{$p} };
-      $path =~ s/::/\//gxsm;
-
-      my $lib_path = sprintf '%s/lib/%s', $installdir, dirname($path);
-      make_path $lib_path;
-      copy $p, sprintf '%s/%s.in', $lib_path, basename($p);
+    else {
+      die "ERROR: could not copy $dist_dir/$_ to $installdir/$_\n"
+        if !copy( "$dist_dir/$_", "$installdir/$_" );
     }
   }
 
-  chdir $installdir;
+  # no need to check file existence, copy will fail above or rename will fail and be caught
+  rename "$installdir/Makefile.txt", "$installdir/Makefile"
+    or die "ERROR: error renaming $installdir/Makefile.txt to $installdir/Makefile: $OS_ERROR\n";
 
-  system make => grep {defined} $module_name_arg, $stub_arg;
+  rename "$installdir/gitignore", "$installdir/.gitignore"
+    or die "ERROR: error renaming $installdir/gitignore to $installdir/.gitignore: $OS_ERROR\n";
+
+  return;
+}
+
+########################################################################
+sub _import_files {
+########################################################################
+  my ($self) = @_;
+
+  my $installdir = $self->get_installdir;
+
+  my $import_listing = $self->get_import_file_listing;
+
+  return
+    if !$import_listing;
+
+  # directory structure is derived from the primary package name, not the
+  # source path - the source may have arbitrary leading path components
+  my ( $packages, $scripts ) = @{$import_listing}{qw(packages scripts)};
+
+  # copy scripts to bin
+  foreach my $s ( @{$scripts} ) {
+    my $dest = sprintf '%s/bin/%s.in', $installdir, basename($s);
+
+    die "ERROR: error copying $s to $dest\n"
+      if !copy( $s, $dest );
+  }
+
+  # create sub directories and copy packages
+  foreach my $p ( keys %{$packages} ) {
+
+    my $primary = $self->_find_primary_package( $p, $packages->{$p} );
+
+    if ( !$primary ) {
+      warn "WARNING: could not determine primary package for $p...skipping.\n";
+      next;
+    }
+
+    my $path = $primary;
+    $path =~ s/::/\//xsmg;
+
+    my $lib_path = sprintf '%s/lib/%s', $installdir, dirname($path);
+
+    make_path($lib_path);
+    die "ERROR: could not create $lib_path\n" if !-d $lib_path;
+
+    my $dest = sprintf '%s/%s.in', $lib_path, basename($p);
+    die "ERROR: could not copy $p to $dest\n"
+      if !copy( $p, $dest );
+  }
+
+  return;
+}
+
+########################################################################
+sub _create_resources_file {
+########################################################################
+  my ( $self, $module_name, $installdir ) = @_;
+
+  my $project_name = $module_name;
+  $project_name =~ s/::/-/xsmg;
+
+  my $github_user = $self->get_github_user;
+  warn "WARNING: no github_user found in config or passed. Using default (anonymouse). Edit resources.yml to fix.\n"
+    if !defined $github_user;
+
+  $github_user //= 'anonymouse';
+
+  require Email::Valid;
+
+  my $email = $self->get_email;
+  die "ERROR: invalid email address\n"
+    if $email && !Email::Valid->address($email);
+
+  my $resources = {
+    bugtracker => {
+      web => sprintf( 'https://github.com/%s/%s/issues', $github_user, $project_name ),
+      $self->get_email ? ( mailto => $self->get_email ) : (),
+    },
+    repository => {
+      type => 'git',
+      url  => sprintf( 'git@github.com:%s/%s.git', $github_user, $project_name ),
+      web  => sprintf( 'https://github.com/%s/%s', $github_user, $project_name ),
+    },
+    homepage => sprintf( 'https://github.com/%s/%s', $github_user, $project_name ),
+  };
+
+  open my $fh, '>', "$installdir/resources.yml"
+    or die "ERROR: could not open resources.yml for writing: $OS_ERROR\n";
+
+  my $yml = Dump( { resources => $resources } );
+  $yml =~ s/^---\n//xsm;
+
+  print {$fh} $yml;
+
+  close $fh
+    or warn "WARNING: could not close resources.yml: $OS_ERROR\n";
+
+  return;
+}
+
+########################################################################
+sub _check_llm {
+########################################################################
+  my ( $self, $api_key ) = @_;
+
+  $api_key //= $ENV{LLM_API_KEY};
+
+  # Remove from environment so it is not inherited by child processes
+  # such as 'make'. This does not protect against memory inspection
+  # of the current process - see LLM::API for how the key is stored
+  # using a closure to prevent accidental serialization via Dumper.
+  delete $ENV{LLM_API_KEY};
+
+  if ( !$api_key && ( my $helper = $self->get_llm_api_key_helper ) ) {
+    chomp( $api_key = qx{$helper} );
+    die "ERROR: llm-api-key-helper returned nothing\n" if !$api_key;
+  }
+
+  die "ERROR: you must pass an API key or set LLM_API_KEY in the environment\n"
+    if !$api_key;
+
+  eval {
+    require LLM::API;
+    LLM::API->import(qw($LLM_MODEL));
+  };
+
+  die "ERROR: LLM::API is required to use AI assisted commands\n"
+    if $EVAL_ERROR;
+
+  my $llm = LLM::API->new( api_key => $api_key, max_tokens => $self->get_max_tokens );
+
+  die "ERROR: could not create an LLM::API instance\n"
+    if !$llm;
+
+  return $llm;
+}
+
+########################################################################
+sub _submit_prompt {
+########################################################################
+  my ( $self, $llm, $prompt ) = @_;
+
+  my $llm_rsp = $llm->send_prompt($prompt);
+
+  die sprintf "ERROR: API request failed: %s %s\n", $llm_rsp->status, $llm_rsp->reason
+    if !$llm_rsp->is_success;
+
+  return $llm_rsp;
+}
+
+########################################################################
+sub cmd_code_review {
+########################################################################
+  my ($self) = @_;
+
+  my ( $file, $api_key ) = $self->get_args;
+
+  my ( $review, $review_file ) = $self->_get_latest_review($file);
+
+  die "ERROR: set all disposition statuses before resubmitting a review\n"
+    if !$self->_check_annotation_dispositions($review);
+
+  my $llm_rsp = $self->_cmd_review(
+    type          => 'code',
+    file          => $file,
+    review        => $review,
+    api_key       => $api_key,
+    context_files => $self->get_context,
+  );
+
+  return $FAILURE
+    if !$llm_rsp;
+
+  $self->_print_token_usage( $llm_rsp, 'Code Review: Token Usage Report' );
+
+  return $SUCCESS;
+}
+
+########################################################################
+sub cmd_pod_review {
+########################################################################
+  my ($self) = @_;
+
+  my ( $file, $api_key ) = $self->get_args;
+
+  my $llm_rsp = $self->_cmd_review(
+    type    => 'pod',
+    file    => $file,
+    api_key => $api_key
+  );
+
+  return $FAILURE
+    if !$llm_rsp;
+
+  $self->_print_token_usage( $llm_rsp, 'POD Review: Token Usage Report' );
+
+  return $SUCCESS;
+}
+
+########################################################################
+sub _cmd_review {
+########################################################################
+  my ( $self, %args ) = @_;
+
+  my ( $review_type, $api_key ) = @args{qw(type api_key)};
+
+  my ( $file, $review, $context_files ) = @args{qw(file review context_files)};
+
+  my @context_files = $review && !$context_files ? @{ $review->{context} // [] } : @{ $context_files // [] };
+
+  foreach my $f ( grep {defined} ( $file, @context_files ) ) {
+    my $abs_path = abs_path($f);
+
+    die "ERROR: file [$f] not found or empty.\n"
+      if !$abs_path || !-e $abs_path || !-s $abs_path;
+  }
+
+  my $llm = $self->_check_llm($api_key);
+
+  my $prompt_str = $self->_get_review_prompt( $review_type, $review );
+
+  my @prompt;
+
+  push @prompt, $llm->text($prompt_str);
+
+  my $text  = $review_type eq 'pod' ? slurp( abs_path($file) ) : $self->_strip_pod($file);
+  my $title = $review_type eq 'pod' ? basename($file)          : 'primary: ' . basename($file);
+
+  push @prompt,
+    $llm->document(
+    data  => $text,
+    title => $title,
+    );
+
+  foreach my $f (@context_files) {
+    push @prompt,
+      $llm->document(
+      data  => $self->_strip_pod($f),
+      title => 'context:' . basename($f),
+      );
+  }
+
+  if ($review) {
+    push @prompt,
+      $llm->document(
+      data  => encode_json($review),
+      title => 'annotations:' . basename($file),
+      );
+  }
+
+  my $llm_rsp = $self->_submit_prompt( $llm, \@prompt );
+  my $content = $llm_rsp->content;
+
+  die "ERROR: no content object returned by LLM\n"
+    if !$content;
+
+  if ( !$content->text ) {
+    warn "WARNING: LLM did not return any text from request.\n";
+    return;
+  }
+
+  my $name = basename($file);
+  $name =~ s/[.].*$//xsm;
+
+  my ( $sec, $min, $hour, $day, $month, $year ) = localtime;
+  $year += 1900;
+  $month++;
+
+  my $ts = sprintf '%04d-%02d-%02d-%02d%02d%02d', $year, $month, $day, $hour, $min, $sec;
+
+  my $review_file = sprintf '%s-review-%s.%s', $name, $ts, $review_type;
+
+  my $new_review = eval { decode_json( $content->text ); };
+
+  die "ERROR: unable to decode JSON\n$EVAL_ERROR\nresponse was:\n" . $content->text
+    if $EVAL_ERROR;
+
+  if ( $review_type eq 'code' ) {
+    if ( $self->get_prompt_profile ) {
+      $new_review->{prompt_profiles} = $self->get_prompt_profile;
+    }
+
+    if ( $self->get_context ) {
+      $new_review->{context} = $self->get_context;
+    }
+  }
+
+  open my $fh, '>', $review_file
+    or die "ERROR: could not open $review_file for writing.\n$OS_ERROR";
+
+  print {$fh} JSON::PP->new->pretty->encode($new_review);
+
+  close $fh
+    or warn "WARNING: could not close $review_file: $OS_ERROR";
+
+  return $llm_rsp;
+}
+
+########################################################################
+sub _strip_pod {
+########################################################################
+  my ( $self, $file ) = @_;
+
+  return slurp( abs_path($file) )
+    if $file !~ /[.]p[ml](?:[.]in)?\z/xsm;
+
+  require Pod::Extract;
+  Pod::Extract->import('extract_pod');
+
+  open my $fh, '<', abs_path($file)
+    or die "ERROR: could not open $file for reading\n";
+
+  my ( $pod, $code, $sections ) = extract_pod($fh);
+  close $fh;
+
+  return $code;
+}
+
+########################################################################
+sub _get_review_prompt {
+########################################################################
+  my ( $self, $review_type, $review ) = @_;
+
+  if ( !-d '.prompts' || !-e ".prompts/$review_type-review.prompt" ) {
+    $self->_install_prompts;
+  }
+
+  my @prompts = ( $self->get_prompt // ".prompts/$review_type-review.prompt" );
+  my @profiles
+    = $review && !$self->get_prompt_profile ? @{ $review->{prompt_profiles} // [] } : @{ $self->get_prompt_profile // [] };
+
+  push @prompts, map {".prompts/$_.prompt"} @profiles;
+
+  my $prompt = q{};
+
+  foreach my $f (@prompts) {
+    my $abs_path = abs_path($f)
+      or die "ERROR: $f not found\n";
+
+    die "ERROR: $f is empty or not found\n"
+      if !-e $abs_path || !-s $abs_path;
+
+    $prompt .= "\n" . slurp($abs_path);
+  }
+
+  $prompt =~ s/^#[^\n]*(?:\n|\z)//xsmg;
+  $prompt =~ s/\n{2,}/\n/xsmg;  # collapse 2+ blank lines to one
+  $prompt =~ s/\A\n+//xsm;  # strip leading blank lines
+
+  die "ERROR: prompt file prompt is essentially empty\n"
+    if $prompt !~ /\S/xsm;
+
+  return $prompt;
+}
+
+########################################################################
+sub _install_prompts {
+########################################################################
+  my ($self) = @_;
+
+  make_path('.prompts');
+
+  die "ERROR: could not create .prompts directory\n"
+    if !-d '.prompts';
+
+  my $dist_dir = $self->get_dist_dir;
+
+  for my $type (qw(code pod)) {
+    my $file = "$type-review.prompt";
+    my $dest = ".prompts/$file";
+
+    next if -e $dest;
+
+    copy "$dist_dir/$file", $dest
+      or die "ERROR: could not install $file to .prompts/: $OS_ERROR\n";
+
+    print "Installed default prompt: $dest\n";
+  }
+
+  print "\nEdit these files to customize your review prompts.\n";
+  print "Set code-review-prompt or pod-review-prompt in your\n";
+  print "config to use prompts from an explicit path.\n\n";
+
+  return;
+}
+
+########################################################################
+sub cmd_release_notes {
+########################################################################
+  my ($self) = @_;
+
+  my ( $version, $api_key ) = $self->get_args;
+
+  if ( !$version ) {
+    $version = eval { slurp('VERSION'); };
+    if ($version) {
+      chomp $version;
+    }
+  }
+
+  die "ERROR: usage cpan-maker-bootstrapper release-notes [api-key]\n"
+    if !$version;
+
+  die "ERROR: invalid version\n"
+    if $version !~ /\A\d+[.]\d+[.]\d+\z/xsm;
+
+  my $llm = $self->_check_llm($api_key);
+
+  my @documents;
+
+  my @file_list = map {"release-$version.$_"} qw(diffs lst tar.gz);
+
+  foreach my $file (@file_list) {
+    die "ERROR: $file not found or empty!\n"
+      if !-e $file || !-s $file;
+  }
+
+  foreach my $file (@file_list) {
+    next if $file =~ /[.]tar[.]gz$/xsm;
+
+    push @documents, slurp $file;
+  }
+
+  my @prompt;
+
+  push @prompt, $llm->text('Produce release notes in markdown format for this Perl CPAN distribution release.');
+
+  push @prompt,
+    $llm->document(
+    data  => $documents[0],
+    title => 'Diffs'
+    );
+
+  push @prompt,
+    $llm->document(
+    data  => $documents[1],
+    title => 'Changed Files Listing'
+    );
+
+  # this looks like we are sending a lot files, but in fact we only
+  # send the updated files in the repo to the LLM...but worth capping
+  my $iter = Archive::Tar->iter( "release-$version.tar.gz", 1 );
+
+  my $file_limit = $self->get_max_diff_files;
+  my $file_count = 0;
+
+  # if there are more files in the tarball then $file_limit we dir
+  while ( my $file = $iter->() ) {
+
+    next if $file->is_dir;
+    next if $file->name =~ /[.](png|jpg|gif|gz|zip|tar)\z/xsmi;
+
+    die sprintf "ERROR: max number of files (%s) in diff listing has been reached. Use --max-diff-files to increase\n",
+      $file_limit
+      if $file_limit && $file_count == $file_limit;
+
+    my $file_content = $file->get_content;
+    next if !defined $file_content || $file_content eq q{};
+
+    push @prompt,
+      $llm->document(
+      data  => $file_content,
+      title => $file->name
+      );
+
+    $file_count++;
+  }
+
+  my $llm_rsp = $self->_submit_prompt( $llm, \@prompt );
+
+  my $content = $llm_rsp->content;
+
+  if ( !defined $content ) {
+    print {*STDERR} $llm_rsp->raw_content;
+    return $FAILURE;
+  }
+
+  my $release_notes = sprintf 'release-notes-%s.md', $version;
+
+  open my $fh, '>', $release_notes
+    or die "ERROR: could not open $release_notes for writing\n$OS_ERROR";
+
+  print {$fh} $content->text;
+
+  close $fh
+    or warn "WARNING: could not close $release_notes: $OS_ERROR\n";
+
+  $self->_print_token_usage( $llm_rsp, 'Release Notes: Token Usage Report' );
+
+  return $SUCCESS;
+}
+
+########################################################################
+sub cmd_show_finding {
+########################################################################
+  my ($self) = @_;
+
+  my ( $file, $finding_id ) = $self->get_args;
+
+  die "ERROR: file argument is required\n"
+    if !$file;
+
+  die "ERROR: finding ID is required\n"
+    if !$finding_id;
+
+  die "ERROR: finding ID must be a positive integer\n"
+    if $finding_id !~ /^\d+$/xsm || $finding_id < 1;
+
+  die "ERROR: $file not found or inaccessible\n"
+    if !abs_path($file);
+
+  my ( $review, $review_file ) = $self->_get_latest_review($file);
+
+  die "ERROR: no review file found for $file\n"
+    if !$review;
+
+  my ($finding) = grep { $_->{id} == $finding_id } @{ $review->{findings} };
+
+  die "ERROR: finding $finding_id not found in $review_file\n"
+    if !$finding;
+
+  my $total = scalar @{ $review->{findings} };
+
+  require Text::ASCIITable;
+
+  my $t = Text::ASCIITable->new( { headingText => sprintf 'Finding %d of %d  -  %s', $finding_id, $total, $review_file } );
+
+  $t->setCols( 'Field', 'Value' );
+  $t->setColWidth( 'Field', 16 );
+  $t->setColWidth( 'Value', 56 );
+  $t->alignCol( Value => sub { return sprintf '%-56s', shift; } );
+
+  $t->addRow( 'ID',          $finding->{id} );
+  $t->addRow( 'Function',    $finding->{function} );
+  $t->addRow( 'Severity',    $finding->{severity} );
+  $t->addRow( 'Disposition', $finding->{disposition} // '-' );
+  $t->addRowLine;
+  $t->addRow( 'Description', $finding->{description} );
+  $t->addRowLine;
+  $t->addRow( 'Excerpt', $finding->{excerpt} );
+  $t->addRowLine;
+  $t->addRow( 'Detail', $finding->{detail} );
+
+  print {*STDOUT} $t;
 
   return $SUCCESS;
 }
@@ -339,32 +1266,47 @@ sub cmd_install {
 sub main {
 ########################################################################
   my %commands = (
-    install         => \&cmd_install,
-    default         => \&cmd_install,
+    'install'       => \&cmd_install,
+    'default'       => \&cmd_install,
     'create-config' => \&cmd_create_config,
+    'code-review'   => \&cmd_code_review,
+    'pod-review'    => \&cmd_pod_review,
+    'release-notes' => \&cmd_release_notes,
+    'annotate'      => \&cmd_annotate,
+    'show-finding'  => \&cmd_show_finding,
   );
 
   my @option_specs = qw(
     help|h
+    auto-annotate|A
+    annotate|a=s@
     basedir|b=s
+    color!
     config|c=s
+    context|C=s@
     email|e=s
+    finalize-annotations|F
     force|f!
     github-user|g=s
     installdir|i=s
     import|I=s@
+    max-diff-files=i
+    max-tokens|t=i
     module|m=s
     resources|r=s
     stub|s=s
     username|u=s
+    prompt=s
+    prompt-profile=s@
   );
 
-  my @extra_options = qw(dist_dir import_file_listing);
+  my @extra_options = qw(llm_api_key_helper dist_dir import_file_listing);
 
   my $cli = __PACKAGE__->new(
-    commands      => \%commands,
-    option_specs  => \@option_specs,
-    extra_options => \@extra_options,
+    commands        => \%commands,
+    option_specs    => \@option_specs,
+    extra_options   => \@extra_options,
+    default_options => { color => $TRUE },
   );
 
   return $cli->run();
@@ -470,6 +1412,12 @@ To initialize version control and make your first commit:
 See L</EXTENDING THE BUILD SYSTEM> for how to customize the build,
 L</Notes> for dependency management details, and L</FAQ> for common
 questions.
+
+C<CPAN::Maker::Bootstrapper> also provides AI-assisted development
+tools via the Anthropic Claude API. These include iterative code review
+with structured finding annotations, POD documentation review and
+B<generation>, and AI-generated release notes. See L</LLM Commands> and
+L</THE REVIEW WORKFLOW> for details.
 
 =head1 WHY YOU SHOULD CONSIDER USING YET ANOTHER BUILD TOOL
 
@@ -813,9 +1761,133 @@ Then set C<CPAN_MAKER_CONFIG> to point to it:
 
 =back
 
+=head2 LLM Commands
+
+The following commands require L<LLM::API> to be installed and a valid
+Anthropic API key. Set it in the environment before running any LLM command:
+
+ export LLM_API_KEY=$(cat ~/.ssh/anthropic-api-key)
+
+The key is deleted from the environment immediately after being read and
+is never passed to child processes. See L<CPAN::Maker::ConfigReader> for
+the C<llm-api-key-helper> option which avoids exposing the key in shell
+history entirely.
+
+I<SECURITY NOTE: Never pass your API key on the command line where it
+would be visible in shell history and process listings.>
+
+=over 4
+
+=item code-review
+
+Submits a Perl module or script to the LLM for a code review. POD is
+automatically stripped before submission so token costs reflect code
+only. The review is written as a JSON file to the current directory.
+
+ cpan-maker-bootstrapper code-review [options] lib/My/Module.pm
+
+The review file is named:
+
+ <module>-review-<timestamp>.code
+
+A token usage summary is printed to stderr after the review completes.
+
+If a review has been completed at least once the annotated review file
+is automatically sent with your code to re-focus the review. You must
+annotate the review file before resubmitting. See L</THE REVIEW
+WORKFLOW> for details.
+
+Options specific to code-review:
+
+ --prompt|-p PATH          path to a custom review prompt file
+ --prompt-profile|-P NAME  additive prompt profile (repeatable)
+ --context|-C PATH         context file to submit alongside the review (repeatable)
+
+I<Note: The prompt profile list and the context file list is written
+to the review output file. On subsequent runs these will be read from
+the review. You do not need to provide them unless you want to update
+their values.>
+
+=item annotate
+
+Applies disposition tags to findings in the latest review file and
+displays the current annotation state. Must be run from a project
+directory (one containing F<.includes/>).
+
+ cpan-maker-bootstrapper annotate [options] lib/My/Module.pm
+
+Without options, displays the current annotation state of the latest
+review file. With C<-a> options, applies the specified dispositions
+before displaying.
+
+ cpan-maker-bootstrapper annotate lib/My/Module.pm
+ cpan-maker-bootstrapper annotate -a 1:wrong -a 2:reject lib/My/Module.pm
+
+Options:
+
+ --annotate|-a N:DISPOSITION    apply disposition to finding N (repeatable)
+ --auto-annotate|-A             annotate and immediately submit the next review
+ --finalize-annotations|-F      create versioned release artifact
+
+Valid dispositions are C<accept>, C<reject>, C<wrong>,
+C<wrong-reconsider>, C<defer>, and C<confirmed> (case
+insensitive). See L</THE REVIEW WORKFLOW> for a description of each.
+
+=item pod-review
+
+Submits a Perl module or script to the LLM for a documentation review.
+The full file including code is submitted so the LLM can check
+consistency between implementation and documentation. If no POD exists
+the LLM generates complete POD documentation ready to paste after
+C<__END__>.
+
+ cpan-maker-bootstrapper pod-review lib/My/Module.pm
+
+The review file is named:
+
+ <module>-review-<timestamp>.pod
+
+=item release-notes
+
+Generates release notes for a given version using the LLM. Requires
+the release artifacts produced by C<make release-notes>:
+
+ release-<version>.diffs
+ release-<version>.lst
+ release-<version>.tar.gz
+
+Usage:
+
+ cpan-maker-bootstrapper release-notes <version>
+
+The generated release notes are written to C<release-notes-E<lt>versionE<gt>.md>.
+Binary files are automatically excluded. Use C<--max-diff-files> to
+cap token consumption on large distributions (default: 50, 0 = unlimited).
+
+
+=item show-finding
+
+Generates a table with the complete details of a finding.
+
+ cpan-maker-bootstrapper show-finding lib/My/Module.pm 1
+
+=back
+
 =head2 Options
 
 =over 4
+
+=item C<--annotate|-a> N:DISPOSITION
+
+See L</annotate>
+
+=item C<--auto-annotate|-A>
+
+See L</annotate>
+
+=item C<--finalize-annotations|-F>
+
+See L</annotate>
 
 =item C<--basedir|-b> DIR
 
@@ -836,45 +1908,25 @@ used to scaffold your project.
 
 default: ~/.gitconfig
 
-=item C<--module|-m> MODULE (required)
+=item C<--context|-C> PATH
 
-The Perl module name for the new project, e.g. C<My::New::Module>.
-Used to derive the project directory name, source file path, and
-tarball name. You can omit this option if you provide a stub file
-(C<--stub path>) that contains a package name that is consistent with
-the stub's path. For example, if my package is C<My::App> and the
-module's path contains C<My/App> then the script will assume your
-module name is C<My::App>.
-
- cpan-maker-bootstrapper --stub $HOME/workdir/My/App.pm
-
-=item C<--installdir|-i> DIR
-
-Directory in which to create the project. Defaults to the current working
-directory. The directory is created if it does not exist.
-
-I<Note: C<--installdir> overrides C<--basedir>>.
-
-=item C<--username|-u> NAME
-
-Override the author name used in the module stub and C<buildspec.yml>.
-Defaults to C<user.name> from your global git config.
+One or more files to submit with your code review file that provide
+additional context for the LLM during the review.
 
 =item C<--email|-e> EMAIL
 
 Override the author email. Defaults to C<user.email> from your global
 git config.
 
-=item C<--github-user|-g> USER
-
-Override the GitHub username used to construct repository URLs in
-C<buildspec.yml>. Defaults to C<user.github> from your global git config.
-
 =item C<--force|-f>
 
 Overwrite an existing project. Without this flag, the command dies if a
 C<Makefile> already exists in the target directory.
 
+=item C<--github-user|-g> USER
+
+Override the GitHub username used to construct repository URLs in
+C<buildspec.yml>. Defaults to C<user.github> from your global git config.
 
 =item C<--import|-I> path
 
@@ -890,12 +1942,69 @@ When using the C<--import> option, you must use the C<--module> option to
 specify the primary module that defines the distribution.
 
 I<Note: The F<Makefile> will automatically attempt to substitute the
-token C<@PACKAGE_VERSION@> inside your C<.pl.in> or C<.pm.in> files with
+token C<E<64>PACKAGE_VERSIONE<64>> inside your C<.pl.in> or C<.pm.in> files with
 the current semantic version in the F<VERSION> file. If you want to
 use that for versioning your scripts and modules add the token as
 shown below:>
 
- our $VERSION = '@PACKAGE_VERSION@';
+ our $VERSION = 'E<64>PACKAGE_VERSIONE<64>';
+
+=item C<--installdir|-i> DIR
+
+Directory in which to create the project. Defaults to the current working
+directory. The directory is created if it does not exist.
+
+I<Note: C<--installdir> overrides C<--basedir>>.
+
+=item C<--max-diff-files> LIMIT
+
+The number of files inside the tarball that contains the changed files
+for release notes creation that can be uploaded to the LLM. Set to 0
+for no limit.
+
+default: 50
+
+=item C<--max-tokens|-t> TOKENS
+
+Maximum number of tokens the LLM may return in a single response.
+Higher values reduce the risk of truncated reviews on large files.
+
+default: 4096 (set by L<LLM::API>)
+
+=item C<--module|-m> MODULE (required)
+
+The Perl module name for the new project, e.g. C<My::New::Module>.
+Used to derive the project directory name, source file path, and
+tarball name. You can omit this option if you provide a stub file
+(C<--stub path>) that contains a package name that is consistent with
+the stub's path. For example, if my package is C<My::App> and the
+module path contains C<My/App> then the script will assume your
+module name is C<My::App>.
+
+ cpan-maker-bootstrapper --stub $HOME/workdir/My/App.pm
+
+=item C<--no-color>
+
+Turns coloring of annotation summary table off.
+
+default: on
+
+=item C<--prompt> PATH
+
+Path to a text file that will be used to prompt the LLM for a code or pod review.
+
+defaults:
+
+ pod  => .prompts/pod-review.prompt
+ code => .prompts/code-review.prompt
+
+=item C<--prompt-profile> NAME
+
+The name of a prompt profile located in the F<.prompts> directory. One
+or more profile names may be specified. You need only provide the name
+(e.g. cli-tool).
+
+See L</PROMPT PROFILES>
 
 =item C<--resources|-r> github
 
@@ -926,6 +2035,11 @@ C<--module> option for details.
 =back
 
 When specifying a stub you cannot use the C<--import> option.
+
+=item C<--username|-u> NAME
+
+Override the author name used in the module stub and C<buildspec.yml>.
+Defaults to C<user.name> from your global git config.
 
 =back
 
@@ -995,6 +2109,15 @@ On a clean first run neither F<requires> nor F<test-requires> exists
 yet, so the raw scanner output becomes the dependency file - meaning
 skip list and pins have no effect until the second run.
 
+=item B<Import Behavior>
+
+When the importer creates your project's source tree it will place
+C<.pm> files inside the F</lib> directory and C<.pl> files inside the
+F<bin> directory. Your F<lib> directory hierarchy will be based on the
+package names inside those C<.pm> files. B<If the importer cannot
+match the filename you are importing with a package inside that file,
+a warning is generated and the file is skipped.>
+
 =item B<Modulinos>
 
 A modulino is a Perl file that doubles as a runnable script. The bash
@@ -1045,7 +2168,7 @@ The build system supports optional Perl quality gates controlled via
 your configuration file. Set the following keys in the C<[cpan-maker]>
 section:
 
- syntax_checking = on          # enables perl -wc on generated files
+ syntax-checking = on          # enables perl -wc on generated files
  perltidyrc = ~/.perltidyrc    # enables perltidy stage gate
  perlcriticrc = ~/.perlcriticrc # enables perlcritic stage gate
 
@@ -1072,6 +2195,263 @@ To disable all linting at once:
 Or use C<make quick> to disable both scanning and linting in one step.
 
 =back
+
+=head1 THE REVIEW WORKFLOW
+
+C<CPAN::Maker::Bootstrapper> implements a structured iterative code
+review workflow built around JSON review files and developer-applied
+disposition annotations. The workflow converges over several rounds,
+with each round potentially costing less as noise is suppressed and
+findings are resolved.
+
+=head2 Overview
+
+Each review round consists of three steps:
+
+=over 4
+
+=item 1. Run a review
+
+ cpan-maker-bootstrapper code-review \
+   --prompt-profile cli-tool \
+   lib/My/Module.pm
+
+The review is written to a timestamped C<.code> file containing a JSON
+object with C<findings>, C<confirmations>, and C<deferred> arrays.
+
+=item 2. Annotate the findings
+
+ cpan-maker-bootstrapper annotate lib/My/Module.pm
+
+This displays the current annotation state. Apply dispositions with
+C<-a> options:
+
+ cpan-maker-bootstrapper annotate \
+   -a 1:accept -a 2:wrong -a 3:reject -a 4:defer \
+   lib/My/Module.pm
+
+You can annotate incrementally across multiple invocations. Each call
+shows the updated state so you always know what remains.
+
+=item 3. Submit the next review
+
+Once all findings are annotated, simply run the next review. The
+bootstrapper automatically finds and submits the latest annotated
+review file:
+
+ cpan-maker-bootstrapper code-review lib/My/Module.pm
+
+Alternatively, use C<--auto-annotate|-A> with the C<annotate> command
+to annotate and immediately resubmit in one step:
+
+ cpan-maker-bootstrapper annotate -a 1:wrong -a 2:reject --auto-annotate \
+   lib/My/Module.pm
+
+The LLM will honor all dispositions from the prior round, confirm
+fixes marked C<ACCEPT>, carry forward C<DEFER> items, and suppress
+C<REJECT> and C<WRONG> findings. New findings appear without noise
+from settled questions.
+
+=back
+
+=head2 Dispositions
+
+Each finding in the annotations file must be given one of the following
+dispositions before the next review can be submitted:
+
+=over 4
+
+=item ACCEPT
+
+The finding is valid and has been fixed. On the next review the LLM
+will confirm the fix is present. If the fix is not found the finding
+will be re-raised.
+
+=item REJECT
+
+The finding has been reviewed and dismissed as inapplicable to this
+codebase or context. It will not be raised again in subsequent reviews.
+
+=item WRONG
+
+The finding was based on faulty reasoning. The code is correct. The
+finding will not be re-raised. Use this when the LLM has misread the
+control flow, misunderstood the design intent, or applied an
+inappropriate threat model.
+
+=item WRONG-RECONSIDER
+
+Applied automatically at finalization to all findings marked WRONG.
+On the first review of the next version the LLM will re-examine the
+specific function and code excerpt carefully. If the prior analysis
+was still incorrect the finding reverts to WRONG. If the code has
+changed and the finding is now valid it is raised as a new finding.
+If the model understands specifically why its prior reasoning was
+wrong it may mark the finding CONFIRMED.
+
+=item DEFER
+
+The finding is known and acknowledged but not yet addressed. It is
+carried forward in the C<deferred> array of each subsequent review
+without being treated as a new finding.
+
+=item CONFIRMED
+
+Used for logic confirmations rather than defects. Marks that both the
+LLM and the developer agree the code is correct.
+
+=back
+
+=head2 Diminishing Returns and When to Stop
+
+Each round tends to surface smaller and more obscure issues as obvious
+findings are resolved. Stop when you see these signals:
+
+=over 4
+
+=item *
+
+All new findings are LOW severity.
+
+=item *
+
+The LLM is re-raising findings already marked WRONG or REJECT,
+possibly rephrased.
+
+=item *
+
+New findings describe edge cases that cannot occur in normal usage.
+
+=back
+
+When all findings have dispositions and no new substantive issues
+appear, the code is ready to ship.
+
+=head2 The Release Artifact
+
+When you are satisfied with the review state, finalize it with
+C<--finalize-annotations>:
+
+ cpan-maker-bootstrapper annotate --finalize-annotations \
+   -a 1:wrong -a 2:reject \
+   lib/My/Module.pm
+
+This applies any remaining dispositions, validates that all findings
+are annotated, reads the version from the F<VERSION> file, and writes
+the versioned release artifact:
+
+ CPAN-Maker-Bootstrapper-1.1.0-REVIEW.json
+
+This file serves as a code review certification for the release — a
+machine-readable record of every finding examined, every logic
+confirmation made, and every disposition applied before the version
+was published. Commit it to the repository alongside your ChangeLog.
+
+All findings marked WRONG are automatically converted to
+WRONG-RECONSIDER in the release artifact, prompting careful
+re-examination on the first review of the next version rather
+than permanent suppression.
+
+=head2 Cost Management
+
+Typical review costs run $0.05-0.10 per run on a moderately sized
+module with POD stripped. Costs decrease over successive rounds as
+the model spends fewer output tokens re-explaining suppressed findings.
+
+Use C<--prompt-profile> to suppress entire classes of noise before
+they reach the annotation file. A well-tuned profile for your
+application type is the highest-leverage cost reduction available.
+
+=head2 See Also
+
+L</LLM Commands>, L</Prompt Profiles>, L<CPAN::Maker::ConfigReader>
+
+=head1 PROMPT PROFILES
+
+Prompt profiles are additive prompt fragments that customize the review
+behavior for specific application types. They are appended to the base
+review prompt before submission and are intended to focus the review on
+relevant concerns while suppressing noise that does not apply to the
+target context.
+
+=head2 Using Profiles
+
+Pass one or more profiles using the C<--prompt-profile> option:
+
+  cpan-maker-bootstrapper code-review --prompt-profile cli-tool MyModule.pm
+
+Multiple profiles may be combined:
+
+  cpan-maker-bootstrapper code-review \
+    --prompt-profile cli-tool \
+    --prompt-profile security \
+    MyModule.pm
+
+Profiles are resolved from the F<.prompts/> directory in the current
+project. A profile named C<cli-tool> resolves to
+F<.prompts/cli-tool.prompt>.
+
+=head3 Built-in Profiles
+
+The following profile is installed with the distribution:
+
+=over 4
+
+=item cli-tool
+
+Appropriate for single-user developer CLI tools. Suppresses security
+findings that assume a multi-user or hostile environment, TOCTOU race
+condition findings that assume concurrent invocation, and concerns about
+C<qx{}> or C<system()> calls where input originates from the user's own
+configuration. Also assumes C<perlcritic> and C<perltidy> are enforced
+in the development environment.
+
+=back
+
+=head3 Creating Custom Profiles
+
+A profile is a plain text file in F<.prompts/> containing additional
+prompt instructions, one per line. Lines beginning with C<#> are treated
+as comments and stripped before submission. Profile instructions use the
+same format as the base review prompt.
+
+Example F<.prompts/security.prompt>:
+
+  # security profile - add to any review where input handling matters
+  - Treat all caller-supplied input as untrusted regardless of source.
+  - Flag any use of eval, system, or exec that incorporates external data.
+  - Flag missing taint checks on data used in file or system operations.
+
+=head3 Planned Profiles
+
+The following profiles are planned for future releases:
+
+=over 4
+
+=item library
+
+Focuses on API contract correctness and caller assumptions. Appropriate
+for CPAN distributions intended for use by unknown callers.
+
+=item web-application
+
+Treats external input as untrusted. Flags injection risks, authentication
+gaps, and session handling concerns.
+
+=item mod-perl-handler
+
+Addresses Apache lifecycle concerns including global state, startup versus
+request time initialization, and child process behavior.
+
+=item lambda-function
+
+Focuses on cold start performance, statelessness, and environment variable
+handling appropriate for AWS Lambda deployments.
+
+=back
+
+Community contributions of additional profiles are welcome. See
+L<https://github.com/rlauer6/CPAN-Maker-Bootstrapper/issues>.
 
 =head1 PREREQUISITES
 
@@ -1406,8 +2786,9 @@ Create the script in F<bin/> with a C<.sh.in> extension:
  bin/my-script.sh.in
 
 The build system will process it through the standard token
-substitution (replacing C<@PACKAGE_VERSION@> and C<@MODULE_NAME@>),
-make it executable, and include it in the distribution automatically.
+substitution (replacing C<E<64>PACKAGE_VERSIONE<64>> and
+C<E<64>MODULE_NAMEE<64>>), make it executable, and include it in the
+distribution automatically.
 
 If your script is more than a few lines of bash, consider writing it
 as a I<modulino> instead - a Perl module that doubles as a runnable
@@ -1500,6 +2881,8 @@ optionally by generated CLI module stubs
 L<CPAN::Maker::ConfigReader> - the git config reader bundled with this
 distribution, available for use in your own
 tools.
+
+L<LLM::API> - client interface to Anthropic's Claude API
 
 L<Module::ScanDeps::Static> - the static dependency scanner used by
 C<make requires> and C<make test-requires> to analyze your source files

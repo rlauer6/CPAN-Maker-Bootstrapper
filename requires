@@ -3,9 +3,15 @@
 +Pod::Extract 0
 +Pod::Markdown 0
 +Text::Markdown::Discount 0
+Archive::Tar 0
 CLI::Simple 1.0.11
 Class::Accessor::Fast 0.51
 Config::Tiny 2.30
+Email::Valid 1.204
 File::HomeDir 1.006
 File::ShareDir 1.118
+JSON::PP 0
+Module::Metadata 0
+Readonly 2.05
+Text::ASCIITable 0.22
 YAML::XS 0
