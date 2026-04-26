@@ -1,4 +1,4 @@
-package CPAN::Maker::ConfigReader;
+package CPAN::Maker::Bootstrapper::ConfigReader;
 
 use strict;
 use warnings;

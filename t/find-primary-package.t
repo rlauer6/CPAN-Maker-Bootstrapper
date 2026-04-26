@@ -4,7 +4,6 @@ use strict;
 use warnings;
 
 use Test::More;
-
 use CPAN::Maker::Bootstrapper;
 
 my $bootstrapper = bless {}, 'CPAN::Maker::Bootstrapper';

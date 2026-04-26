@@ -89,3 +89,4 @@
     as a new finding with disposition null.
   - Do not simply re-raise the finding unchanged with the same reasoning
     that was previously rejected.
+- Output compact JSON with no whitespace outside string values.

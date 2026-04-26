@@ -1,3 +1,71 @@
+Sun Apr 26 17:17:42 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.0.0]:
+	* release-notes-2.0.0.md: new
+	* README.md: generated
+	* VERSION: bump
+	* .gitignore
+	- +*.crit, *.pod, *-review-2*.code/pod/annotate, bin/bootstrapper
+	* gitignore: +*-review-2*.pod/annotate/code
+	* .includes/git.mk
+	- add a ChangeLog
+	* .includes/help.mk
+	(Variables): MODULINO_NAME, ALIAS
+	* .includes/perl.mk
+	- $(NO_ECHO)
+	- +TIDY_FILES, CRITIC_FILES, ERR_FILES
+	- write sytax errors to STDOUTxi
+	- don't redirect output from perltidy or perlcritic
+	* .prompts/code-review.prompt: compact JSON
+	* .prompts/pod-review.prompt
+	- added suggestion other prompts to reduce noice
+	* MANIFEST: -modulino.tmpl
+	* Makefile
+	- +$(NO_ECHO), $(BOOTSTRAPPER), $(CONFIG_READER), $(BASE_DIR)
+	- -$(BUILDSPEC_TEMPLATE), $(UNIT_TEST_TEMPLATE)
+	(DEPS): +cpanfile
+	(cpanfile): new
+	(scan-deps): display Scanning...messsage
+	(buildspec.yml.tmpl): new
+	(buildspec.yml)
+	- add specfile if exists
+	- add extra_files if exists
+	(CLEANFILES): +resources
+	* buildspec.yml
+	- +man-links, cpan-make-bootstrapper.yml
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- pod updates
+	- moved commands to role classes
+	* modulino.tmpl: MODULINO_WRAPPER
+	* project.mk
+	- + $(ROLES)
+	- dependency recipe for roles
+	* requires
+	- +CPAN::Maker 1.8.0, CLI::Simple 2.0.0, File::Copy::Recursive, Role::Tiny
+	* t/find-primary-package.t: modified
+	* test-requires.skip: new, CPAN::Maker::Bootstrapper
+	* bin/bootstrapper.in: new
+	* cpan-maker-bootstrapper.yml: new
+	* lib/CPAN/Maker/Bootstrapper/ConfigReader.pm.in: renamed
+	* lib/CPAN/Maker/Bootstrapper/Constants.pm.in: new
+	* lib/CPAN/Maker/Bootstrapper/Role/CreateConfig.pm.in: new
+	* lib/CPAN/Maker/Bootstrapper/Role/Init.pm.in: new
+	* lib/CPAN/Maker/Bootstrapper/Role/Installer.pm.in: new
+	(cmd_install)
+	- minor refactoring
+	(_import_files)
+	- remove executable permission from source
+	- install .t files
+	(_import_file_listing)
+	- use abs_path of import directories
+	- find .t files
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Annotator.pm.in: new
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Models.pm.in: new
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/ReleaseNotes.pm.in: new
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Reviewer.pm.in: new
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Utils.pm.in: new
+	* lib/CPAN/Maker/Bootstrapper/Role/ScaffoldImporter.pm.in: new
+
 Mon Apr 20 04:40:24 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[1.1.0]:

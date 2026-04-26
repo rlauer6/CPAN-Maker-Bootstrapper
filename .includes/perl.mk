@@ -26,7 +26,11 @@ syntax_on  = $(if $(lint_off),,$(filter-out off,$(shell echo $(SYNTAX_CHECKING) 
 tidy_on    = $(if $(lint_off),,$(filter-out off,$(shell echo $(PERLTIDYRC)      | tr '[:upper:]' '[:lower:]')))
 critic_on  = $(if $(lint_off),,$(filter-out off,$(shell echo $(PERLCRITICRC)    | tr '[:upper:]' '[:lower:]')))
 
-CLEANFILES += *.tdy *.ERR *.pm.tdy *.pm.crit *.pl.tdy *.pl.crit
+$(eval $(call find-files,TIDY_FILES,lib bin,*.tdy))
+$(eval $(call find-files,CRITIC_FILES,lib bin,*.crit))
+$(eval $(call find-files,ERR_FILES,lib bin,*.crit))
+
+CLEANFILES += $(TIDY_FILES) $(CRITIC_FILES) $(ERR_FILES)
 
 # ------------------------------------------------------------------
 # snippets
@@ -53,8 +57,9 @@ define check_syntax_pm
 	done; \
 	if [[ "$$skip" -eq 0 ]]; then \
 	  module=$$(echo $@ | perl -npe 's{^lib/}{}; s/\//::/g; s/\.pm$$//;'); \
-	  perl -wc $(PERLINCLUDE) -M"$$module" -e 1 \
-	    || { rm -f "$@"; exit 1; }; \
+	  errfile=$$(mktemp) && trap 'rm -f $$errfile' EXIT; \
+	  perl -wc $(PERLINCLUDE) -M"$$module" -e 1 2>$$errfile \
+	    || { rm -f "$@"; cat $errfile; exit 1; }; \
 	fi
 endef
 
@@ -64,8 +69,9 @@ define check_syntax_pl
 	  [[ "$$f" = "$@" ]] && skip=1 && break; \
 	done; \
 	if [[ "$$skip" -eq 0 ]]; then \
-	  perl -wc $(PERLINCLUDE) "$@" \
-	    || { rm -f "$@"; exit 1; }; \
+	  errfile=$$(mktemp) && trap 'rm -f $$errfile' EXIT; \
+	  perl -wc $(PERLINCLUDE) -M"$$module" -e 1 2>$$errfile \
+	    || { rm -f "$@"; cat $errfile; exit 1; }; \
 	fi
 endef
 
@@ -77,63 +83,60 @@ endef
 
 %.pm.tdy: %.pm
 ifneq ($(tidy_on),)
-	@test -e "$(PERLTIDYRC)" \
+	$(NO_ECHO)test -e "$(PERLTIDYRC)" \
 	  || { echo "ERROR: $(PERLTIDYRC) not found"; exit 1; }; \
 	if [[ -z "$(PERLTIDY)" ]]; then \
 	  echo "ERROR: perltidy not found - install with: cpanm Perl::Tidy"; \
 	  exit 1; \
 	fi; \
-	$(PERLTIDY) --profile="$(PERLTIDYRC)" $<; \
+	echo >&2 "Checking tidiness...$<"; \
+	$(PERLTIDY) --profile="$(PERLTIDYRC)" $< >/dev/null 2>&1; \
 	diff -q "$<" "$<.tdy" >/dev/null 2>&1 \
 	  || { echo "ERROR: $< is not tidy - run: make tidy"; rm -f "$<.tdy" "$@"; exit 1; }; \
 	rm -f "$<.tdy"; \
 	touch "$@"
 else
-	@touch "$@"
+	$(NO_ECHO)touch "$@"
 endif
 
+# note that perlcritic output errors on STDOUT
 %.pm.crit: %.pm
 ifneq ($(critic_on),)
-	@test -e "$(PERLCRITICRC)" \
+	$(NO_ECHO)test -e "$(PERLCRITICRC)" \
 	  || { echo "ERROR: $(PERLCRITICRC) not found"; exit 1; }; \
 	if [[ -z "$(PERLCRITIC)" ]]; then \
 	  echo "ERROR: perlcritic not found - install with: cpanm Perl::Critic"; \
 	  exit 1; \
 	fi; \
-	$(PERLCRITIC) --profile="$(PERLCRITICRC)" $< \
+	echo >&2 "Critiquing...$<"; \
+	$(PERLCRITIC) --profile="$(PERLCRITICRC)" $< 1>&2 \
 	  || { echo "ERROR: $< fails perlcritic"; rm -f "$@"; exit 1; }; \
 	touch "$@"
 else
-	@touch "$@"
+	$(NO_ECHO)touch "$@"
 endif
-
-# and the %.pm rule drops sentinel prerequisites
-%.pm: %.pm.in
-	@module_tmp="$$(mktemp)"; \
-	...
-	$(if $(syntax_on),$(check_syntax_pm))
-
 
 %.pl.tdy: %.pl
 ifneq ($(tidy_on),)
-	@test -e "$(PERLTIDYRC)" \
+	$(NO_ECHO)test -e "$(PERLTIDYRC)" \
 	  || { echo "ERROR: $(PERLTIDYRC) not found"; exit 1; }; \
 	if [[ -z "$(PERLTIDY)" ]]; then \
 	  echo "ERROR: perltidy not found - install with: cpanm Perl::Tidy"; \
 	  exit 1; \
 	fi; \
+	echo >&2 "Checking tidiness...$<"; \
 	$(PERLTIDY) --profile="$(PERLTIDYRC)" $<; \
-	diff -q "$<" "$<.tdy" >/dev/null 2>&1 \
+	diff -q "$<" "$<.tdy" 2>/dev/null 2>&1 \
 	  || { echo "ERROR: $< is not tidy - run: make tidy"; rm -f "$<.tdy" "$@"; exit 1; }; \
 	rm -f "$<.tdy"; \
 	touch "$@"
 else
-	@touch "$@"
+	$(NO_ECHO)touch "$@"
 endif
 
 %.pl.crit: %.pl
 ifneq ($(critic_on),)
-	@test -e "$(PERLCRITICRC)" \
+	$(NO_ECHO)test -e "$(PERLCRITICRC)" \
 	  || { echo "ERROR: $(PERLCRITICRC) not found"; exit 1; }; \
 	if [[ -z "$(PERLCRITIC)" ]]; then \
 	  echo "ERROR: perlcritic not found - install with: cpanm Perl::Critic"; \
@@ -143,7 +146,7 @@ ifneq ($(critic_on),)
 	  || { echo "ERROR: $< fails perlcritic"; rm -f "$@"; exit 1; }; \
 	touch "$@"
 else
-	@touch "$@"
+	$(NO_ECHO)touch "$@"
 endif
 
 # ------------------------------------------------------------------
@@ -151,7 +154,7 @@ endif
 # ------------------------------------------------------------------
 
 %.pm: %.pm.in
-	@module_tmp="$$(mktemp)"; \
+	$(NO_ECHO)module_tmp="$$(mktemp)"; \
 	local_cleanfiles="$$module_tmp"; \
 	trap 'rm -f $$local_cleanfiles' EXIT; \
 	sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
@@ -163,7 +166,7 @@ endif
 	$(if $(syntax_on),$(check_syntax_pm))
 
 %.pl: %.pl.in
-	@rm -f "$@"; \
+	$(NO_ECHO)rm -f "$@"; \
 	sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
 	    -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' $< > "$@"; \
 	chmod +x "$@"; \
@@ -177,7 +180,7 @@ endif
 .PHONY: tidy critic lint
 
 tidy: ## run perltidy on all source files
-	@if [[ -z "$(PERLTIDYRC)" ]]; then \
+	$(NO_ECHO)if [[ -z "$(PERLTIDYRC)" ]]; then \
 	  echo "ERROR: PERLTIDYRC not set - add perltidyrc to your config or set PERLTIDYRC=path"; \
 	  exit 1; \
 	fi; \
@@ -187,7 +190,7 @@ tidy: ## run perltidy on all source files
 	  echo "ERROR: perltidy not found - install with: cpanm Perl::Tidy"; \
 	  exit 1; \
 	fi; \
-	$(MAKE) SYNTAX_CHECKING=on PERLTIDYRC="" PERLCRITICRC=""; \
+	$(MAKE) $(PERL_MODULES) $(PERL_BIN_FILES) SYNTAX_CHECKING=on PERLTIDYRC="" PERLCRITICRC=""; \
         FILE_LIST=$$(find lib bin -name '*.p[lm].in'); \
 	for f in $$FILE_LIST; do \
 	  echo "tidying: $$f"; \
@@ -196,7 +199,7 @@ tidy: ## run perltidy on all source files
 	done
 
 critic: ## run perlcritic on all source files
-	@if [[ -z "$(PERLCRITICRC)" ]]; then \
+	$(NO_ECHO)if [[ -z "$(PERLCRITICRC)" ]]; then \
 	  echo "ERROR: PERLCRITICRC not set - add perlcriticrc to your config or set PERLCRITICRC=path"; \
 	  exit 1; \
 	fi; \
@@ -212,7 +215,7 @@ critic: ## run perlcritic on all source files
 	test -n "$$PERL_SCRIPTS" && $(PERLCRITIC) --profile="$(PERLCRITICRC)" $$PERL_SCRIPTS
 
 lint: ## run all linting tools (tidy + critic)
-	@$(MAKE) tidy critic
+	$(NO_ECHO)$(MAKE) tidy critic
 
 # custom make rules
 -include project.mk

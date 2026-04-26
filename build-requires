@@ -1,0 +1,10 @@
+Module::ScanDeps::Static
+Module::CPANfile
+Markdown::Render
+YAML::XS
+Text::CSV_XS
+Pod::Markdown
+Role::Tiny
+CPAN::Maker
+Test::Output
+Test::Exit

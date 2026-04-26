@@ -14,6 +14,10 @@ provides
 resources
 bin/cpan-maker-bootstrapper
 *.tdy
-*.crit
-*.pod
-*-review-*.code
+**/*.crit
+**/*.pod
+*-review-2*.code
+*-review-2*.pod
+*-review-2*.annotate
+bin/bootstrapper
+

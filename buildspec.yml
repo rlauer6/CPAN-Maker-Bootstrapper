@@ -34,6 +34,10 @@ extra-files:
     - gitignore
     - modulino.tmpl
     - MANIFEST
+    - cpan-maker-bootstrapper.yml
+man-links:
+  - bootstrapper: CPAN::Maker::Bootstrapper
+  - cpan-maker-bootstrapper: CPAN::Maker::Bootstrapper
 
 resources:
   homepage: http://github.com/rlauer6/CPAN-Maker-Bootstrapper

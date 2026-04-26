@@ -1,0 +1,14 @@
+name: CPAN-Maker-Bootsrapper
+on:
+  push:
+    branches: [ main ]
+jobs:
+  cpan-maker-bootstrapper:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: build
+        run: ./build-github https://github.com/rlauer6/CPAN-Maker-Bootstrapper.git
