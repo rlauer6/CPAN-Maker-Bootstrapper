@@ -1,4 +1,4 @@
-name: CPAN-Maker-Bootsrapper
+name: CPAN-Maker-Bootstrapper
 on:
   push:
     branches: [ main ]

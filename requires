@@ -3,7 +3,6 @@
 +Pod::Extract 0
 +Pod::Markdown 0
 +Text::Markdown::Discount 0
-Archive::Tar 0
 CLI::Simple 2.0.0
 Class::Accessor::Fast 0.51
 Config::Tiny 2.30

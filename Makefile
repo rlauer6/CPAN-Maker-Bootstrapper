@@ -72,11 +72,14 @@ quick: ## quick build, turns off scanning, perltidy, perlcritic
 	$(NO_ECHO)$(MAKE) SCAN=off LINT=off
 
 cpanfile: requires test-requires 
-	all_requires=$$(mktemp); trap 'rm -f $$all_requires' EXIT; \
-	cp requires $$all_requires; \
-	cat test-requires >>$$all_requires; \
-	sort -u $$all_requires | perl -ne 'chomp; s/^[+]//; ($$m,$$v)=split/\s+/,$$_,2; print qq{requires "$$m", "$$v";\n};' >$@
-
+	$(NO_ECHO)if [[ -e requires ]] && [[ -e test-requires ]]; then \
+	  all_requires=$$(mktemp); trap 'rm -f $$all_requires' EXIT; \
+	  cp requires $$all_requires; \
+	  cat test-requires >>$$all_requires; \
+	  sort -u $$all_requires | perl -ne 'chomp; s/^[+]//; ($$m,$$v)=split/\s+/,$$_,2; print qq{requires "$$m", "$$v";\n} if $$m;' >$@; \
+	else \
+	  echo >&2 "ERROR: make sure SCAN=on to produce requires, test-requires"; \
+	fi
 DEPS = \
     buildspec.yml \
     README.md \
@@ -150,10 +153,14 @@ define scan-deps
 	dep_requires=$$(mktemp); \
 	packages=$$(mktemp); \
 	cleanfiles="$$cleanfiles $$dep_requires $$packages $(1).tmp"; \
+	min_perl_version=$$(perl -MYAML=LoadFile -e 'print LoadFile(q{buildspec.yml})->{q{min-perl-version}};'); \
+	if [[ -n "$$min_perl_version" ]]; then \
+	  min_perl_version="-m $$min_perl_version"; \
+	fi; \
 	for a in $$(find $(2) -name "$(3)"); do \
 	  perl -ne 'print "$$1\n" if /^package +(.*?);/' $$a >> $$packages; \
 	  echo >&2 "Scanning...$$a"; \
-	  $(SCANDEPS) -r --no-core $$a | awk '{printf "%s %s\n", $$1,$$2}' >> $$dep_requires; \
+	  $(SCANDEPS) -r $$min_perl_version --no-core $$a | awk '{printf "%s %s\n", $$1,$$2}' >> $$dep_requires; \
 	done; \
 	if test -s "$$dep_requires"; then \
 	  sort -u $$dep_requires > $(1).tmp; \

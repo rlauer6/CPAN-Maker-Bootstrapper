@@ -1,9 +1,8 @@
-requires "CPAN::Maker", "1.8.0";
+requires "CPAN::Maker", "1.8.1";
 requires "Markdown::Render", "0";
 requires "Pod::Extract", "0";
 requires "Pod::Markdown", "0";
 requires "Text::Markdown::Discount", "0";
-requires "Archive::Tar", "0";
 requires "CLI::Simple", "2.0.0";
 requires "Class::Accessor::Fast", "0.51";
 requires "Config::Tiny", "2.30";

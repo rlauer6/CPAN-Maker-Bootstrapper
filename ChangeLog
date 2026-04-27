@@ -16,6 +16,7 @@ Sun Apr 26 17:17:42 2026  Rob Lauer  <rclauer@gmail.com>
 	- +TIDY_FILES, CRITIC_FILES, ERR_FILES
 	- write sytax errors to STDOUTxi
 	- don't redirect output from perltidy or perlcritic
+	- add errfile to local_cleanfiles
 	* .prompts/code-review.prompt: compact JSON
 	* .prompts/pod-review.prompt
 	- added suggestion other prompts to reduce noice
@@ -25,7 +26,9 @@ Sun Apr 26 17:17:42 2026  Rob Lauer  <rclauer@gmail.com>
 	- -$(BUILDSPEC_TEMPLATE), $(UNIT_TEST_TEMPLATE)
 	(DEPS): +cpanfile
 	(cpanfile): new
-	(scan-deps): display Scanning...messsage
+	(scan-deps)
+	- display Scanning...messsage
+	- set -m from  min-perl-version
 	(buildspec.yml.tmpl): new
 	(buildspec.yml)
 	- add specfile if exists

@@ -150,8 +150,10 @@ sub cmd_install {
   $rc = system 'make clean';
   rename 'tarball', $tarball;
 
-  unlink "$tmpdir/$logfile";
-  unlink "$tmpdir/$errfile";
+  if ( $self->get_log_level ne 'debug' && ( !exists $ENV{NO_ECHO} || $ENV{NO_ECHO} ne q{} ) ) {
+    unlink "$tmpdir/$logfile";
+    unlink "$tmpdir/$errfile";
+  }
 
   # copy contents of tmpdir into installdir then clean up
   $self->get_logger->info("installing project to $installdir...");
@@ -270,15 +272,26 @@ sub _import_files {
   # source path - the source may have arbitrary leading path components
   my ( $packages, $scripts, $tests ) = @{$import_listing}{qw(packages scripts tests)};
 
-  # copy scripts to bin
-  foreach my $s ( @{$scripts} ) {
-    my $dest = sprintf '%s/bin/%s.in', $installdir, basename($s);
-    $self->get_logger->debug( sprintf 'copying %s => %s', $s, $dest );
+  if ( $scripts && @{$scripts} ) {
+    # add built files in bin/ to .gitgnore
+    my $gitignore = slurp("$installdir/.gitignore");
+    $gitignore .= join "\n", map {"bin/$_"} @{$scripts};
 
-    die "ERROR: error copying $s to $dest\n"
-      if !copy( $s, $dest );
+    open my $fh, '>', "$installdir/.gitignore"
+      or die "ERROR: could not replace .gitignore: $OS_ERROR\n";
+    print {$fh} $gitignore;
+    close $fh;
 
-    chmod 0644, $dest;  # remove -x
+    # copy scripts to bin
+    foreach my $s ( @{$scripts} ) {
+      my $dest = sprintf '%s/bin/%s.in', $installdir, basename($s);
+      $self->get_logger->debug( sprintf 'copying %s => %s', $s, $dest );
+
+      die "ERROR: error copying $s to $dest\n"
+        if !copy( $s, $dest );
+
+      chmod 0644, $dest;  # remove -x
+    }
   }
 
   # copy tests to t
@@ -288,6 +301,8 @@ sub _import_files {
 
     die "ERROR: error copying $t to $dest\n"
       if !copy( $t, $dest );
+
+    chmod 0644, $dest;  # make sure they are writable
   }
 
   # create sub directories and copy packages
@@ -311,6 +326,8 @@ sub _import_files {
     my $dest = sprintf '%s/%s.in', $lib_path, basename($p);
     die "ERROR: could not copy $p to $dest\n"
       if !copy( $p, $dest );
+
+    chmod 0644, $dest;  # make sure they are writable
   }
 
   return;
@@ -369,7 +386,7 @@ sub _import_file_listing {
   my ($self) = @_;
 
   my @import_paths = ref $self->get_import ? @{ $self->get_import } : ( $self->get_import );
-  $self->get_logger->info( 'import paths: ' . join "\n", @import_paths );
+  $self->get_logger->debug( 'import paths: ' . join "\n", @import_paths );
 
   my @modules;
   my @scripts;
@@ -412,6 +429,9 @@ sub _import_file_listing {
         }
         elsif ( $name =~ /[.]t\z/xsm ) {
           push @tests, $name;
+        }
+        else {
+          push @scripts, $name;  # must be executable
         }
       },
       $abs_path
