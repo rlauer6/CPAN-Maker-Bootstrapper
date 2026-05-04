@@ -1,10 +1,11 @@
 Module::ScanDeps::Static
 Module::CPANfile
 Markdown::Render
-YAML::XS
-Text::CSV_XS
+YAML::Tiny
 Pod::Markdown
 Role::Tiny
-CPAN::Maker
+CPAN::Maker@1.9.0
+File::ShareDir
+File::ShareDir::Install
 Test::Output
 Test::Exit

@@ -1,9 +1,58 @@
+Sat May  2 09:35:22 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.0.1]:
+	* VERSION: bump
+	* release-notes/release-notes-2.0.1.md: new
+	* release-notes/release-notes-1.0.1.md: renamed
+	* release-notes/release-notes-1.0.2.md: renamed
+	* release-notes/release-notes-1.0.3.md: renamed
+	* release-notes/release-notes-1.0.4.md: renamed
+	* release-notes/release-notes-1.0.5.md: renamed
+	* release-notes/release-notes-1.1.0.md: renamed
+	* release-notes/release-notes-2.0.0.md: renamed
+	* .github/workflows/build.yml
+	- bring in git first
+	* buildspec.yml
+	- +builder, build-requires, .github/workflows/build.yml
+	* .includes/update.mk
+	(update-available): new
+	* Makefile
+	(build-ci): new
+	(LOG_LEVEL): new, add to $(MAKE_CPAN_DIST) command
+	(all): + update-available
+	(test.t.tmpl): fix missing file
+	(buildspec.yml.tmpl): likewise
+	(scan-deps): YAML::Tiny, not YAML
+	(workflow): new
+	* requires
+	- -YAML::XS, +YAML::Tiny
+	* cpanfile: likewise
+	* build-requires
+	- YAML::Tiny, not YAML::XS
+	- +CPAN::Maker@1.9.0, File::ShareDir, File::ShareDir::Install
+	- -Text::CSV_XS
+	* builder
+	- renamed from build-github
+	- more comments
+	- add perltidy, perlcritic to build
+	- support cpm or cpanm installers
+	- read mirrors from build-mirrors
+	- read additional deps from build-apt-deps
+	(installdeps)
+	- new
+	- use cpanfile instead of just looping through build-requires
+	* lib/CPAN/Maker/Bootstrapper/Role/Installer
+	- -YAML::XS, +YAML::Tiny
+	* .includes/update.mk: don't check for updates on this project
+
 Sun Apr 26 17:17:42 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.0.0]:
 	* release-notes-2.0.0.md: new
 	* README.md: generated
 	* VERSION: bump
+	* build-github: new
+	* .github/workflows/build.yml: new
 	* .gitignore
 	- +*.crit, *.pod, *-review-2*.code/pod/annotate, bin/bootstrapper
 	* gitignore: +*-review-2*.pod/annotate/code

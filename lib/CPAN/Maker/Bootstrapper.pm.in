@@ -6,7 +6,7 @@ use warnings;
 use CLI::Simple qw(:roles);
 use parent qw(CLI::Simple);
 
-our $VERSION = '2.0.0';
+our $VERSION = '@PACKAGE_VERSION@';
 
 use Role::Tiny::With;
 with 'CPAN::Maker::Bootstrapper::Role::Init';

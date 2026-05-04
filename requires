@@ -1,4 +1,4 @@
-+CPAN::Maker 1.8.1
++CPAN::Maker 1.9.0
 +Markdown::Render 0
 +Pod::Extract 0
 +Pod::Markdown 0
@@ -16,4 +16,4 @@ Readonly 2.05
 Role::Tiny 0
 Role::Tiny::With 2.002004
 Text::ASCIITable 0.22
-YAML::XS 0
+YAML::Tiny 1.76

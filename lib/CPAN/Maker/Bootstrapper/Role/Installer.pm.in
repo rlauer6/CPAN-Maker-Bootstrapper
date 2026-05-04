@@ -13,7 +13,6 @@ use File::Basename qw(basename dirname);
 use File::Path qw(make_path);
 use File::Copy qw(copy);
 use File::Temp;
-use YAML::XS qw(Dump);
 
 use Role::Tiny;
 
@@ -348,6 +347,7 @@ sub _create_resources_file {
   $github_user //= 'anonymouse';
 
   require Email::Valid;
+  require YAML::Tiny;
 
   my $email = $self->get_email;
   die "ERROR: invalid email address\n"
@@ -369,7 +369,7 @@ sub _create_resources_file {
   open my $fh, '>', "$installdir/resources.yml"
     or die "ERROR: could not open resources.yml for writing: $OS_ERROR\n";
 
-  my $yml = Dump( { resources => $resources } );
+  my $yml = YAML::Tiny::Dump( { resources => $resources } );
   $yml =~ s/^---\n//xsm;
 
   print {$fh} $yml;

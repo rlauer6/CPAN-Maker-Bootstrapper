@@ -1,4 +1,4 @@
-requires "CPAN::Maker", "1.8.1";
+requires "CPAN::Maker", "1.9.0";
 requires "Markdown::Render", "0";
 requires "Pod::Extract", "0";
 requires "Pod::Markdown", "0";
@@ -16,4 +16,4 @@ requires "Readonly", "2.05";
 requires "Role::Tiny", "0";
 requires "Role::Tiny::With", "2.002004";
 requires "Text::ASCIITable", "0.22";
-requires "YAML::XS", "0";
+requires "YAML::Tiny", "1.76";
