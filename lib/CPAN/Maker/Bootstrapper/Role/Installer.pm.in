@@ -237,7 +237,7 @@ sub _install_files {
     if (/[.]mk$/xsm) {
       die "ERROR: could not copy $dist_dir/$_ to $installdir/.includes/$_\n"
         if !copy( "$dist_dir/$_", "$installdir/.includes/$_" );
-      chmod 0644, "$installdir/.includes/$_";
+      chmod 0444, "$installdir/.includes/$_";
     }
     else {
       die "ERROR: could not copy $dist_dir/$_ to $installdir/$_\n"
@@ -248,6 +248,9 @@ sub _install_files {
   # no need to check file existence, copy will fail above or rename will fail and be caught
   rename "$installdir/Makefile.txt", "$installdir/Makefile"
     or die "ERROR: error renaming $installdir/Makefile.txt to $installdir/Makefile: $OS_ERROR\n";
+
+  chmod 0444, "$installdir/Makefile";
+  chmod 0555, "$installdir/builder";
 
   rename "$installdir/gitignore", "$installdir/.gitignore"
     or die "ERROR: error renaming $installdir/gitignore to $installdir/.gitignore: $OS_ERROR\n";

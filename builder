@@ -23,18 +23,18 @@ INSTALLER="${INSTALLER:-cpm install -g}"
 function install_deps {
 ########################################################################
     
-    EXTRA_DEPS=(YAML::Tiny)
+    EXTRA_DEPS=(CPAN::Maker@1.9.1)
+    EXTRA_DEPS+=(File::ShareDir File::ShareDir::Install)
+    EXTRA_DEPS+=(Pod::Markdown Markdown::Render@2.0.4)
 
-########################################################################
-# Comment this line to disable perltidy
-########################################################################
-    EXTRA_DEPS+=(Perl::Tidy)
+    if [[ -n "$PERLCRITICRC" ]]; then
+        EXTRA_DEPS+=(Perl::Critic Perl::Critic::Policy::Compatibility::PodMinimumVersion)
+        EXTRA_DEPS+=(Perl::Critic::Policy::Community::PreferredAlternatives)
+    fi
 
-########################################################################
-# Comment this line to disable perlcritic
-########################################################################
-    EXTRA_DEPS+=(Perl::Critic Perl::Critic::Policy::Compatibility::PodMinimumVersion)
-    EXTRA_DEPS+=(Perl::Critic::Policy::Community::PreferredAlternatives)
+    if [[ -n "$PERLTIDYRC" ]]; then
+        EXTRA_DEPS+=(Perl::Tidy)
+    fi
 
     $INSTALLER "${EXTRA_DEPS[@]}"
 

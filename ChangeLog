@@ -1,3 +1,28 @@
+Wed May  6 05:57:59 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.0.2]:
+	* release-notes-2.0.2.md: new
+	* build-requires: deleted
+	* buildspec.yml: remove above
+	* Makefile
+	(scan-deps): interate over list (lib bin)
+	(check): new
+	(test): new
+	(build-ci)
+	- create symlink for build.log
+	- record total build time
+	* VERSION: bump
+	* builder
+	- embed build required modules
+	- conditionally install Perl::Tidy, Perl::Critic
+	* lib/CPAN/Maker/Bootstrapper/Role/Installer.pm.in
+	(_install_files)
+	- make Makefile, builder ro
+	- make .includes/ ro (again)
+	* .includes/update.mk
+	- update permission with +w, then -w
+	- use version to compare versions
+
 Sat May  2 09:35:22 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.0.1]:

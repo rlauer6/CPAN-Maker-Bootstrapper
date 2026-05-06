@@ -15,12 +15,12 @@ path:
   tests: t
 extra-files:
   - ChangeLog
+  - release-notes.md
   - share:
     - README.md
     - Makefile.txt
     - buildspec.yml.tmpl
     - builder
-    - build-requires
     - .github/workflows/build.yml
     - .includes/git.mk
     - .includes/help.mk
