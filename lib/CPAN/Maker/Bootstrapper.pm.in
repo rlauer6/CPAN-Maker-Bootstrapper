@@ -10,6 +10,7 @@ our $VERSION = '@PACKAGE_VERSION@';
 
 use Role::Tiny::With;
 with 'CPAN::Maker::Bootstrapper::Role::Init';
+with 'CPAN::Maker::Bootstrapper::Role::LLM::Utils';
 
 __PACKAGE__->use_log4perl( level => 'info' );
 
