@@ -1,3 +1,22 @@
+Sat Jul  4 08:54:26 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.0.4]:
+	* VERSION bump
+	* release-notes.md: updated
+	* release-notes/release-notes-2.0.4.md: new
+	* .includes/release-notes.mk
+	- use bootstrapper release-notes to create release-notes.md
+	* builder
+	- don't clone repo if it already exists
+	- remove version from EXTRA_DEPS
+	- update options to cmp --show-build-log-on-failure, --verbose
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/ReleaseNotes.pm.in
+	(cmd_release_notes)
+	- create artifacts sent to LLM using Git::ReleaseDiffs
+	- truncate ChangeLog sent to LLM
+	- strip out pod in .pm.in, .pl.in files sent to LLM
+	* lib/Git/ReleaseDiffs.pm.in: new
+
 Thu Jul  2 15:00:08 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.0.3]:
