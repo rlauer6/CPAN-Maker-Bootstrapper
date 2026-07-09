@@ -10,6 +10,8 @@ VERSION := $(shell test -e VERSION || echo 1.0.0 > VERSION; cat VERSION)
 
 BOOTSTRAPPER_VERSION := $(shell perl -MCPAN::Maker::Bootstrapper -e 'print $$CPAN::Maker::Bootstrapper::VERSION;' 2>/dev/null || true) 
 
+-include config.mk
+
 MODULE_NAME  ?= $(shell SOURCE=$$(pwd) perl -MCwd=abs_path -MFile::Basename=basename -e '$$m=basename(abs_path($$ENV{SOURCE})); $$m =~s/\-/::/g; print $$m')
 
 MODULE_PATH = lib/$(shell echo $(MODULE_NAME) | perl -npe 's/::/\//g;').pm

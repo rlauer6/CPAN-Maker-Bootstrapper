@@ -10,7 +10,8 @@ Email::Valid 1.204
 File::Copy::Recursive 0.45
 File::HomeDir 1.006
 File::ShareDir 1.118
-Git::Raw
+Git::Raw 0
+IO::Scalar 2.113
 JSON::PP 0
 Module::Metadata 0
 Readonly 2.05
