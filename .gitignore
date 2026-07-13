@@ -21,3 +21,4 @@ bin/cpan-maker-bootstrapper
 *-review-2*.annotate
 bin/bootstrapper
 
+bin/cmb
