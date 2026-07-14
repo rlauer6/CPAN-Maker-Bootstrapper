@@ -1,5 +1,5 @@
-requires "CLI::Simple", "2.0.0";
-requires "CPAN::Maker", "1.9.0";
+requires "CLI::Simple", "2.0.14";
+requires "CPAN::Maker", "2.0.1";
 requires "Class::Accessor::Fast", "0.51";
 requires "Config::Tiny", "2.30";
 requires "Email::Valid", "1.204";
@@ -8,7 +8,7 @@ requires "File::HomeDir", "1.006";
 requires "File::ShareDir", "1.118";
 requires "Git::Raw", "0";
 requires "IO::Scalar", "2.113";
-requires "JSON::PP", "0";
+requires "JSON", "4.10";
 requires "Markdown::Render", "0";
 requires "Module::Metadata", "0";
 requires "Pod::Extract", "0";

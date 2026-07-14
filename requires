@@ -1,9 +1,9 @@
-+CPAN::Maker 1.9.0
++CPAN::Maker 2.0.1
 +Markdown::Render 0
 +Pod::Extract 0
 +Pod::Markdown 0
 +Text::Markdown::Discount 0
-CLI::Simple 2.0.0
+CLI::Simple 2.0.14
 Class::Accessor::Fast 0.51
 Config::Tiny 2.30
 Email::Valid 1.204
@@ -12,7 +12,7 @@ File::HomeDir 1.006
 File::ShareDir 1.118
 Git::Raw 0
 IO::Scalar 2.113
-JSON::PP 0
+JSON 4.10
 Module::Metadata 0
 Readonly 2.05
 Role::Tiny 0

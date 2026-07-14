@@ -18,6 +18,7 @@ options:
 - color!
 - comment|co=s
 - context|C=s@
+- debug|d
 - dry-run|D
 - finalize-annotations|F
 - history!
@@ -45,6 +46,7 @@ extra_options:
   - import_file_listing
   - help_sections
 default_options:
+  color: 1
   help_sections:
       - SYNOPSIS
       - COMMANDS

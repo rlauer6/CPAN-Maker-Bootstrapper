@@ -323,7 +323,8 @@ buildspec.yml: | buildspec.yml.tmpl
 	  cat resources.yml >> $$buildspec; \
 	  rm resources.yml; \
 	fi; \
-	cp $$buildspec $@;
+	cp $$buildspec $@; \
+	chmod 0644 $@
 
 include .includes/git.mk
 include .includes/help.mk
