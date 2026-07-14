@@ -1,3 +1,17 @@
+Tue Jul 14 16:57:28 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.0.8]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.0.7.md: new
+	* .includes/git.mk: +NO_COMMIT
+	* README.md: generated
+	* VERSION: bump
+	* lib/CPAN/Maker/Bootstrapper/Role/ExtraFiles.pm.in: new
+	* .gitignore: *.bak, buildspec.yml.current
+	* cpan-maker-bootstrapper.yml: + extra-files commands
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- pod updates
+
 Tue Jul 14 06:49:24 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.0.7]:

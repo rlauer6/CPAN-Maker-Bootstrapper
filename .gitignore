@@ -20,5 +20,6 @@ bin/cpan-maker-bootstrapper
 *-review-2*.pod
 *-review-2*.annotate
 bin/bootstrapper
-
+*.bak
 bin/cmb
+buildspec.yml.current

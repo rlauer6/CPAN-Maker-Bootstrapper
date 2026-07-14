@@ -19,7 +19,7 @@ RECOMMENDED_ARTIFACTS = \
      .prompts/
 
 .PHONY: git
-git: ## initializes a git repository and commits the recommended artifacts
+git: ## initializes a git repository and commits artifacts (NO_COMMIT=1 to stop commit)
 	$(MAKE) clean
 	git init -b main; \
 	date +'%a %b %d %H:%M:%S  $(GIT_NAME)  $(GIT_EMAIL)' >ChangeLog
@@ -35,5 +35,5 @@ git: ## initializes a git repository and commits the recommended artifacts
 	done; \
 	sort $$changelog_files >>ChangeLog; \
 	git add ChangeLog; \
-	git commit -m 'BigBang'
+	test -z "$NO_COMMIT" && git commit -m 'BigBang'
 
