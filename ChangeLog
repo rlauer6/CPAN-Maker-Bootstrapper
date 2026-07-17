@@ -1,8 +1,40 @@
+Fri Jul 17 11:45:48 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.0.9]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.0.9.md: new
+	* README.md: generated
+	* VERSION: bump
+	* .gitignore: +cmb_md5sums.txt
+	* .includes/git.mk
+	- $(NO_ECHO)
+	- NO_COMMIT=1 to prevent auto-commit
+	* .includes/update.mk
+	- $(NO_ECHO) to recipes
+	(update_available)
+	- new flags for controlling version and drift detection
+	* Makefile
+	- support NO_COLOR option
+	- +CMB_UPDATE_CHECK, CMB_VERSION_DRIFT flags to control	version/drift detection
+	(DEPS): +update-available to trigger version/drift detection
+	(TARBALL): make color the default for logging
+	(CLEANFILES): + cmb_md5sums.txt
+	* buildspec.yml
+	- +cmb_md5sums.txt
+	* buildspec.yml.tmpl: use hyphens instead of deprecated '_'
+	* gitignore: +buildspec.yml.current
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- POD updates
+	* project.mk
+	- add cmb_md5sums.txt to DEPS
+	- add same to CLEANFILES
+	(cmd_md5sums.txt): new recipe
+
 Tue Jul 14 16:57:28 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.0.8]:
 	* release-notes.md: updated
-	* release-notes/release-notes-2.0.7.md: new
+	* release-notes/release-notes-2.0.8.md: new
 	* .includes/git.mk: +NO_COMMIT
 	* README.md: generated
 	* VERSION: bump

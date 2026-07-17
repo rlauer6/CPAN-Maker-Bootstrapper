@@ -21,6 +21,7 @@ extra-files:
     - Makefile.txt
     - buildspec.yml.tmpl
     - builder
+    - cmb_md5sums.txt
     - .github/workflows/build.yml
     - .includes/git.mk
     - .includes/help.mk

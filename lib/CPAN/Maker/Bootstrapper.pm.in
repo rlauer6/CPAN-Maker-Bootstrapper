@@ -1672,6 +1672,59 @@ C<PATH>. Required for C<make upgrade> to work:
 
 =back
 
+=head2 Automatic Drift and Update Checks
+
+Every build runs two checks before proceeding, so you don't have to
+remember to run C<make check-upgrade> yourself:
+
+=over 4
+
+=item *
+
+Is a newer C<CPAN::Maker::Bootstrapper> published on CPAN than the
+one installed on this machine?
+
+=item *
+
+Do this project's managed files still match what the I<currently
+installed> C<CPAN::Maker::Bootstrapper> would produce?
+
+=back
+
+These are independent questions - your installed bootstrapper can be
+fully current while a given project has still drifted from it (most
+commonly because the project hasn't been through C<make update>
+since you last upgraded), or your bootstrapper itself can be behind
+CPAN while every project stays perfectly in sync with it.
+
+I<Drift> can happen for either of two reasons: your installed
+C<CPAN::Maker::Bootstrapper> was upgraded since this project last ran
+C<make update>, or a managed file was hand-edited despite the
+warnings not to (see L</What You Should Never Modify>). C<make>
+doesn't try to tell these apart - the fix is the same either way:
+
+ make update
+
+Two variables, set in F<config.mk>, control how strict these checks
+are:
+
+=over 4
+
+=item C<CMB_UPDATE_CHECK> (C<on>|C<off>, default C<on>)
+
+Set to C<off> to skip the MetaCPAN lookup - useful in CI or offline
+environments where the network call would just fail or slow things
+down.
+
+=item C<CMB_VERSION_DRIFT> (C<fail>|C<warn>|C<ignore>, default C<fail>)
+
+Controls what happens when a project's managed files no longer match
+the installed bootstrapper. C<fail> stops the build until you run
+C<make update>; C<warn> prints a message and continues; C<ignore>
+skips the check entirely.
+
+=back
+
 =head2 What You Should Never Modify
 
 The files in F<.includes/> - F<perl.mk>, F<git.mk>, F<help.mk> etc.
@@ -1996,6 +2049,21 @@ If you are unsure which file to edit:
 
 The C<.pm.in> file is the one you own.
 
+=head2 Why does my build say it has drifted from the installed bootstrapper?
+
+This means your project's managed files (F<Makefile>,
+F<.includes/*.mk>) no longer match what your I<currently installed>
+C<CPAN::Maker::Bootstrapper> would generate. There are two ways this
+happens - upgrading your bootstrapper (e.g. via C<cpanm
+--upgrade-all>) instantly "drifts" every project you haven't yet
+updated, or a managed file was edited by hand. Both are fixed the
+same way:
+
+ make update
+
+If you don't want a drifted project to fail the build outright, set
+C<CMB_VERSION_DRIFT=warn> (or C<=ignore>) in that project's
+F<config.mk>. See L</Automatic Drift and Update Checks>.
 =head2 make update overwrote something I changed in a managed file
 
 The managed files in F<.includes/> should never be edited directly -

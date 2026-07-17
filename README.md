@@ -43,6 +43,7 @@
   * [What Belongs in `project.mk`](#what-belongs-in-projectmk)
   * [What does NOT belong in project.mk](#what-does-not-belong-in-projectmk)
   * [Keeping the build system up to date](#keeping-the-build-system-up-to-date)
+  * [Automatic Drift and Update Checks](#automatic-drift-and-update-checks)
   * [What You Should Never Modify](#what-you-should-never-modify)
   * [Dependencies Management](#dependencies-management)
 * [MODULINOS](#modulinos)
@@ -62,7 +63,7 @@
   * [I want to pin a version or add a module the scanner missed](#i-want-to-pin-a-version-or-add-a-module-the-scanner-missed)
   * [I want to exclude a module the scanner found](#i-want-to-exclude-a-module-the-scanner-found)
   * [I edited a .pm file and my changes disappeared](#i-edited-a-pm-file-and-my-changes-disappeared)
-  * [make update overwrote something I changed in a managed file](#make-update-overwrote-something-i-changed-in-a-managed-file)
+  * [Why does my build say it has drifted from the installed bootstrapper?](#why-does-my-build-say-it-has-drifted-from-the-installed-bootstrapper)
   * [make says nothing to do but my source changed](#make-says-nothing-to-do-but-my-source-changed)
   * [How do I disable scanning temporarily?](#how-do-i-disable-scanning-temporarily)
   * [How do I disable syntax checking temporarily?](#how-do-i-disable-syntax-checking-temporarily)
@@ -1535,6 +1536,46 @@ The following targets manage the lifecycle of the build system itself:
 
         make cpanm && make upgrade
 
+## Automatic Drift and Update Checks
+
+Every build runs two checks before proceeding, so you don't have to
+remember to run `make check-upgrade` yourself:
+
+- Is a newer `CPAN::Maker::Bootstrapper` published on CPAN than the
+one installed on this machine?
+- Do this project's managed files still match what the _currently
+installed_ `CPAN::Maker::Bootstrapper` would produce?
+
+These are independent questions - your installed bootstrapper can be
+fully current while a given project has still drifted from it (most
+commonly because the project hasn't been through `make update`
+since you last upgraded), or your bootstrapper itself can be behind
+CPAN while every project stays perfectly in sync with it.
+
+_Drift_ can happen for either of two reasons: your installed
+`CPAN::Maker::Bootstrapper` was upgraded since this project last ran
+`make update`, or a managed file was hand-edited despite the
+warnings not to (see ["What You Should Never Modify"](#what-you-should-never-modify)). `make`
+doesn't try to tell these apart - the fix is the same either way:
+
+    make update
+
+Two variables, set in `config.mk`, control how strict these checks
+are:
+
+- `CMB_UPDATE_CHECK` (`on`|`off`, default `on`)
+
+    Set to `off` to skip the MetaCPAN lookup - useful in CI or offline
+    environments where the network call would just fail or slow things
+    down.
+
+- `CMB_VERSION_DRIFT` (`fail`|`warn`|`ignore`, default `fail`)
+
+    Controls what happens when a project's managed files no longer match
+    the installed bootstrapper. `fail` stops the build until you run
+    `make update`; `warn` prints a message and continues; `ignore`
+    skips the check entirely.
+
 ## What You Should Never Modify
 
 The files in `.includes/` - `perl.mk`, `git.mk`, `help.mk` etc.
@@ -1840,7 +1881,22 @@ If you are unsure which file to edit:
 
 The `.pm.in` file is the one you own.
 
-## make update overwrote something I changed in a managed file
+## Why does my build say it has drifted from the installed bootstrapper?
+
+This means your project's managed files (`Makefile`,
+`.includes/*.mk`) no longer match what your _currently installed_
+`CPAN::Maker::Bootstrapper` would generate. There are two ways this
+happens - upgrading your bootstrapper (e.g. via `cpanm
+\--upgrade-all`) instantly "drifts" every project you haven't yet
+updated, or a managed file was edited by hand. Both are fixed the
+same way:
+
+    make update
+
+If you don't want a drifted project to fail the build outright, set
+`CMB_VERSION_DRIFT=warn` (or `=ignore`) in that project's
+`config.mk`. See ["Automatic Drift and Update Checks"](#automatic-drift-and-update-checks).
+&#x3d;head2 make update overwrote something I changed in a managed file
 
 The managed files in `.includes/` should never be edited directly -
 that is what `project.mk` is for. However if you did modify a managed
@@ -2051,7 +2107,7 @@ tools.
 
 # VERSION
 
-This documentation refers to version 2.0.8
+This documentation refers to version 2.0.9
 
 # AUTHOR
 
