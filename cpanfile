@@ -11,6 +11,7 @@ requires "IO::Scalar", "2.113";
 requires "JSON", "4.10";
 requires "Markdown::Render", "0";
 requires "Module::Metadata", "0";
+requires "Module::ScanDeps::Static", "1.8.2";
 requires "Pod::Extract", "0";
 requires "Pod::Markdown", "0";
 requires "Readonly", "2.05";

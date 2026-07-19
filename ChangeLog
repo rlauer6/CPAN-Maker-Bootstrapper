@@ -1,3 +1,43 @@
+Sun Jul 19 15:50:26 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.0.10]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.0.10.md: new
+	* README.md: generated
+	* VERSION: bump
+	* deps.mk: new
+	* lib/CPAN/Maker/Bootstrapper/Role/CreateDeps.pm.in: new
+	* .includes/perl.mk
+	- disconnect syntax checking from linting
+	- avoid rebuilding .pm files on make clean, distclean
+	* Makefile
+	- use SKIP_TESTS flag to skip test (useful when importing)
+	(dep.mk): new recipe to create intra project dependencies
+	* buildspec.yml.tmpl: '_' => '-'
+	* cpan-maker-bootstrapper.yml: + new command create-deps
+	* deps.mk: modified
+	* lib/CPAN/Maker/Bootstrapper/Role/Installer.pm.in
+	(cmd_install)
+	- tee make output
+	- allow override for NO_ECHO, SYNTAX_CHECKING to args
+	- warn that we always run the scanner
+	- notify user how to preserve directory on errors
+	(tail_file): new, but not used, might come in handly some day
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Models.pm.in
+	(_show_models): _fmt_tokens is not exported
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/ReleaseNotes.pm.in
+	(cmd_release_notes)
+	- print raw response on error
+	- warn user if max tokens hit
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Reviewer.pm.in
+	(_cmd_review)
+	- default max tokens = 8192
+	- warn user if max tokens hit
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Utils.pm.in
+	(_fmt_tokens): fix output when tokens <1M
+	* requires: +Module::ScanDeps::Static
+	* cpanfile: likewise
+
 Fri Jul 17 11:45:48 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.0.9]:
