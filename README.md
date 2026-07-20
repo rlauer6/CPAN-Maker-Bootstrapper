@@ -2107,7 +2107,7 @@ tools.
 
 # VERSION
 
-This documentation refers to version 2.0.10
+This documentation refers to version 2.0.11
 
 # AUTHOR
 

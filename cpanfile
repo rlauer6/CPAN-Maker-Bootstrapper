@@ -6,7 +6,6 @@ requires "Email::Valid", "1.204";
 requires "File::Copy::Recursive", "0.45";
 requires "File::HomeDir", "1.006";
 requires "File::ShareDir", "1.118";
-requires "Git::Raw", "0";
 requires "IO::Scalar", "2.113";
 requires "JSON", "4.10";
 requires "Markdown::Render", "0";

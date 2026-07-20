@@ -1,3 +1,24 @@
+Mon Jul 20 13:13:47 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.0.11]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.0.11.md: new
+	* README.md: generated
+	* VERSION: bump
+	* .includes/perl.mk
+	- use compile.skip + PERLWC_SKIP to avoid syntax checking some files
+	* Makefile
+	- make check-syntax a dependency of $(TARBALL)
+	* gitignore: *.checked
+	* .gitignore: likewise
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/ReleaseNotes.pm.in
+	- lazy load Git::Raw to see if it is available
+	* lib/Git/ReleaseDiffs.pm.in: likewise
+	* recommends: +Git::Raw
+	* requires.skip: likewise
+	* cpanfile: -Git::Raw
+	* requires: likewise
+
 Sun Jul 19 15:50:26 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.0.10]:
