@@ -13,7 +13,7 @@ File::ShareDir 1.118
 IO::Scalar 2.113
 JSON 4.10
 Module::Metadata 0
-Module::ScanDeps::Static 1.8.2
+Module::ScanDeps::Static 1.9.0
 Readonly 2.05
 Role::Tiny 0
 Role::Tiny::With 2.002004

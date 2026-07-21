@@ -62,8 +62,6 @@ define run_podextract
 endef
 
 define check_syntax_pm
-	local_cleanfiles=""; \
-	trap 'rm -f $$local_cleanfiles' EXIT; \
 	skip=0; \
 	perlwc_skip=$$(mktemp); local_cleanfiles="$$local_cleanfiles $$perlwc_skip"; \
 	if [[ -e compile.skip ]]; then \
@@ -71,22 +69,20 @@ define check_syntax_pm
 	fi; \
 	printf "%s\n" $(PERLWC_SKIP) >> $$perlwc_skip; \
 	for f in $$(cat $$perlwc_skip); do \
-	  [[ "$$f" = "$<" ]] && skip=1 && break; \
+	  [[ "$$f" = "$@" ]] && skip=1 && break; \
 	done; \
 	if [[ "$$skip" -eq 0 ]]; then \
-	  module=$$(echo $< | perl -npe 's{^lib/}{}; s/\//::/g; s/\.pm$$//;'); \
+	  module=$$(echo $@ | perl -npe 's{^lib/}{}; s/\//::/g; s/\.pm$$//;'); \
 	  errfile=$$(mktemp); \
 	  local_cleanfiles="$$local_cleanfiles $$errfile"; \
 	  perl -wc $(PERLINCLUDE) -M"$$module" -e 1 2>$$errfile \
-	    || { rm -f "$<"; cat $$errfile; exit 1; }; \
-	  podcheck="$$($(PODCHECKER) $< 2>&1 || true)"; \
-	  echo "$$podcheck" | grep -q "does not contain\|OK" || { rm -f "$<"; echo "$$podcheck"; exit 1; } \
+	    || { rm -f "$@"; cat $$errfile; exit 1; }; \
+	  podcheck="$$($(PODCHECKER) $@ 2>&1 || true)"; \
+	  echo "$$podcheck" | grep -q "does not contain\|OK" || { rm -f "$@"; echo "$$podcheck"; exit 1; } \
 	fi
 endef
 
 define check_syntax_pl
-	local_cleanfiles=""; \
-	trap 'rm -f $$local_cleanfiles' EXIT; \
 	skip=0; \
 	perlwc_skip=$$(mktemp); local_cleanfiles="$$local_cleanfiles $$perlwc_skip"; \
 	if [[ -e compile.skip ]]; then \
@@ -94,15 +90,15 @@ define check_syntax_pl
 	fi; \
 	printf "%s\n" $(PERLWC_SKIP) >> $$perlwc_skip; \
 	for f in $$(cat $$perlwc_skip); do \
-	  [[ "$$f" = "$<" ]] && skip=1 && break; \
+	  [[ "$$f" = "$@" ]] && skip=1 && break; \
 	done; \
 	if [[ "$$skip" -eq 0 ]]; then \
 	  errfile=$$(mktemp); \
 	  local_cleanfiles="$$local_cleanfiles $$errfile"; \
 	  perl -wc $(PERLINCLUDE) -e 1 2>$$errfile \
-	    || { rm -f "$<"; cat $$errfile; exit 1; }; \
-	  podcheck="$$($(PODCHECKER) $< 2>&1 || true)"; \
-	  echo "$$podcheck" | grep -q "does not contain\|OK" || { rm -f "$<"; echo "$$podcheck"; exit 1; } \
+	    || { rm -f "$@"; cat $$errfile; exit 1; }; \
+	  podcheck="$$($(PODCHECKER) $@ 2>&1 || true)"; \
+	  echo "$$podcheck" | grep -q "does not contain\|OK" || { rm -f "$@"; echo "$$podcheck"; exit 1; } \
 	fi
 endef
 
@@ -181,14 +177,19 @@ else
 endif
 
 # ------------------------------------------------------------------
-# pattern rules - always depend on sentinels
+# pattern rules
 # ------------------------------------------------------------------
-
-# %.pm/%.pl are now reached via a pattern-rule chain (%.pm.checked ->
-# %.pm -> %.pm.in). Without this, GNU Make treats them as disposable
-# intermediate files and deletes them right after check-syntax uses
-# them, even though they're the actual build deliverables.
-.PRECIOUS: %.pm %.pl
+#
+# Templating and syntax-checking are combined again (previously split
+# into %.pm.checked/%.pl.checked sentinels + a check-syntax target to
+# work around a deps.mk chicken-and-egg problem). That problem is now
+# solved at the source: deps.mk depends on the .pm.in/.pl.in SOURCE
+# files, not the built .pm/.pl targets (see Makefile:
+# `deps.mk: $(PERL_MODULES:%=%.in)`), so deps.mk can always regenerate
+# -- and its edges are always current -- before anything gets built.
+# Real graph edges are respected by GNU Make even under -j, so the
+# combined rule below builds/checks modules in correct dependency
+# order without needing a separate phase-barrier pass.
 
 %.pm: %.pm.in
 	$(NO_ECHO)module_tmp="$$(mktemp)"; \
@@ -199,40 +200,25 @@ endif
 	$(run_podextract); \
 	rm -f "$@"; \
 	cp "$$module_tmp" "$@"; \
-	chmod -w "$@"
+	chmod -w "$@"; \
+	$(if $(syntax_on),$(check_syntax_pm))
 
 %.pl: %.pl.in
-	$(NO_ECHO)rm -f "$@"; \
+	$(NO_ECHO)local_cleanfiles=""; \
+	trap 'rm -f $$local_cleanfiles' EXIT; \
+	rm -f "$@"; \
 	sed -e 's/[@]PACKAGE_VERSION[@]/$(VERSION)/' \
 	    -e 's/[@]MODULE_NAME[@]/$(MODULE_NAME)/' $< > "$@"; \
 	chmod +x "$@"; \
-	chmod -w "$@"
+	chmod -w "$@"; \
+	$(if $(syntax_on),$(check_syntax_pl))
 
-# ------------------------------------------------------------------
-# syntax-check sentinels - deliberately a SEPARATE pass from the
-# templating rules above. deps.mk's own remake (deps.mk: $(PERL_MODULES))
-# only needs templating to succeed, and templating can never fail for
-# cross-module ordering reasons (no `use`d sibling resolution happens
-# there). That guarantees deps.mk can always regenerate and GNU Make's
-# automatic restart-after-remake always completes -- even when a
-# freshly-added `use` references a sibling module that hasn't been
-# built yet. Syntax checking (which DOES need siblings to exist) only
-# runs here, after every .pm/.pl in this build is already on disk, so
-# ordering is a non-issue by the time it runs.
-# ------------------------------------------------------------------
-
-%.pm.checked: %.pm
-	$(NO_ECHO)$(if $(syntax_on),$(check_syntax_pm))
-	@touch $@
-
-%.pl.checked: %.pl
-	$(NO_ECHO)$(if $(syntax_on),$(check_syntax_pl))
-	@touch $@
-
+# kept as a convenience alias (Makefile's $(TARBALL) target depends on
+# this explicitly) -- syntax checking is bundled into the rules above
+# again, so this is just $(PERL_MODULES)/$(PERL_BIN_FILES) by another
+# name.
 .PHONY: check-syntax
-check-syntax: $(PERL_MODULES:%.pm=%.pm.checked) $(PERL_BIN_FILES:%.pl=%.pl.checked) ## verify all built modules/scripts compile and pass podchecker
-
-CLEANFILES += $(PERL_MODULES:%.pm=%.pm.checked) $(PERL_BIN_FILES:%.pl=%.pl.checked)
+check-syntax: $(PERL_MODULES) $(PERL_BIN_FILES) ## verify all built modules/scripts compile and pass podchecker
 
 # ------------------------------------------------------------------
 # convenience targets
@@ -280,24 +266,19 @@ lint: ## run all linting tools (tidy + critic)
 
 # dependencies
 #
-# deps.mk has a self-remake rule (see Makefile: `deps.mk: $(PERL_MODULES)`)
-# that requires the built .pm files to exist. GNU Make always checks
-# whether included makefiles are up to date *before* running the
-# requested goal -- including `clean` -- so an unguarded include here
-# causes `make clean` to build every .pm file and then immediately
-# delete them. Skip the include for clean/distclean goals so make
-# doesn't build anything it's only about to remove.
-ifeq ($(filter clean distclean,$(MAKECMDGOALS)),)
+# deps.mk's self-remake rule now depends on the .pm.in/.pl.in SOURCE
+# files (see Makefile: `deps.mk: $(PERL_MODULES:%=%.in)`), not the
+# built .pm/.pl targets. `make clean` never touches source files, so
+# including this unconditionally can no longer force a build-then-
+# delete cycle during clean/distclean the way it used to when deps.mk
+# depended on $(PERL_MODULES) directly.
 -include deps.mk
-endif
 
 # custom make rules
 #
 # project.mk is plain data (module dependency edges) with no rule to
-# remake itself, so including it doesn't trigger the same forced-build
-# problem as deps.mk. It's also the conventional place to drop extra
-# clean-local:: recipes, so it must stay included unconditionally --
-# guarding it the way deps.mk is guarded above would silently skip
-# those clean-local:: hooks whenever `make clean` runs.
+# remake itself. It's also the conventional place to drop extra
+# clean-local:: recipes, so it must stay included unconditionally in
+# all cases, same as deps.mk above.
 -include project.mk
 

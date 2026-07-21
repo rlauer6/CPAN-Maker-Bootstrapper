@@ -1,3 +1,30 @@
+Tue Jul 21 08:15:45 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.0.12]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.0.11.md: new
+	* README.md: generated
+	* VERSION: bump
+	* config.mk: new
+	* .includes/perl.mk
+	- templating & syntax-checking are combined again
+	(check_syntax_pm): revert to checking syntax of built target
+	(check_syntax_pl): likewise
+	* Makefile
+	(scan-deps)
+	- uses new batch feature of scandeps-static.pl
+	(package)
+	- new target that does make clean, then make LINT=on and SCAN=on as recommen final step in packaging
+	* config.mk: modified
+	* lib/CPAN/Maker/Bootstrapper/Role/CreateDeps.pm.in
+	- find .pm.in and .pl.in files.
+	(cmd_create_deps)
+	- create dependency recipes for one or more files
+	* project.mk
+	(install): new
+	* requires: +Module::ScanDeps::Static 1.9.0
+	* cpanfile: likewise
+
 Mon Jul 20 13:13:47 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.0.11]:
