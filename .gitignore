@@ -16,6 +16,7 @@ provides
 resources
 bin/cpan-maker-bootstrapper
 *.tdy
+*.raw
 **/*.crit
 **/*.pod
 *-review-2*.code

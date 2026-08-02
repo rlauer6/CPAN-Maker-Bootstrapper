@@ -5,7 +5,9 @@ commands:
   code-review:        CPAN::Maker::Bootstrapper::Role::LLM::Reviewer
   create-config:      CPAN::Maker::Bootstrapper::Role::CreateConfig
   create-deps:        CPAN::Maker::Bootstrapper::Role::CreateDeps
+  critique:            CPAN::Maker::Bootstrapper::Role::Critic
   default:            cmd_install
+  filter:             CPAN::Maker::Bootstrapper::Role::Filter 
   install:            CPAN::Maker::Bootstrapper::Role::Installer
   import-scaffold:    CPAN::Maker::Bootstrapper::Role::ScaffoldImporter
   models:             CPAN::Maker::Bootstrapper::Role::LLM::Models
@@ -22,6 +24,7 @@ options:
 - context|C=s@
 - debug|d
 - dry-run|D
+- file-list|L=s
 - finalize-annotations|F
 - history!
 - max-diff-files=i

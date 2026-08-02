@@ -8,7 +8,6 @@ use CLI::Simple::Utils qw(slurp);
 use Data::Dumper;
 use File::Find;
 use List::Util qw(none);
-use Module::ScanDeps::Static;
 use Role::Tiny;
 
 ########################################################################
@@ -50,6 +49,8 @@ sub find_deps {
   my ( $self, $modules ) = @_;
 
   my %requires;
+
+  require Module::ScanDeps::Static;
 
   foreach my $m ( @{$modules} ) {
     my $scanner = Module::ScanDeps::Static->new( { path => $m } );

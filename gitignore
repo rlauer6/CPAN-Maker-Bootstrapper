@@ -1,3 +1,4 @@
+**/*.raw
 **/*.checked
 **/*.sh
 module.pm.tmpl

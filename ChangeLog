@@ -1,3 +1,82 @@
+Sat Jul 25 06:24:38 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.0.13]:
+	* README.md: generated
+	* VERSION: bump
+	* .gitignore: + *.raw
+	* .includes/perl.mk
+	- use env vars for perlcritic customization
+	- output findings to console and log
+	* .includes/release-notes.mk: cmd, not bootstrapper
+	* .includes/update.mk: update .gitignore (preserving existing)
+	* Makefile
+	(MD_UTILS): markdown-render
+	(SCANDEPS): scandeps-static
+	(MIN_PERL_VERSION_FLAG): read from buildspec
+	(DEPS): +suggests, recommends
+	(README.md): don't exit if no POD
+	(scan-deps): removed
+	(filter-requires): removed, functionality moved to scandeps-static
+	(requires.raw): new
+	(test-requires.raw): new
+	(suggests.raw): new
+	(recommends.raw): new
+	- + .raw pattern rule
+	(requires): depends on $(SOURCE_FILES)
+	(suggests): likewise
+	(build-ci)
+	- now builds from the project directory
+	(cpanfile): combine requires, suggest & recommends
+	* builder
+	- build from mounted directory
+	- use --no-prebuilt with cpm
+	- ignore bootstrapper version drift
+	- show all steps
+	* buildspec.yml.tmpl: + recommends, suggests
+	* cpan-maker-bootstrapper.yml
+	- +critique, filter commands
+	- +file-list option
+	* deps.mk
+	- (./lib/CPAN/Maker/Bootstrapper/Role/Init.pm): +ConfigReader
+	* gitignore: *.raw
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- use CLI::Simple color feature
+	(init_logger): no longer needed because of above
+	* lib/CPAN/Maker/Bootstrapper/Role/CreateDeps.pm.in
+	(find_deps): lazy load Module::ScanDeps::Static
+	* lib/CPAN/Maker/Bootstrapper/Role/ExtraFiles.pm.in
+	(cmd_extra_files): avoid duplicate entries
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Annotator.pm.in
+	- lazy load Term::ANSIColor, Text::ASCIITable
+	(cmd_annotate): likewise
+	(_show_annotations): likewise
+	(_load_ASCIITable): new
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Models.pm.in
+	(cmd_models): lazy load Text::ASCIITable
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Reviewer.pm.in
+	(cmd_code_review): lazy load Text::ASCIITable
+	(cmd_pod_review): likewise
+	(cmd_code_finding): likewise
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Utils.pm.in
+	(_check_llm): use or do {} pattern to trap error
+	(_pre_submission_report): lazy load Text::ASCITable
+	(_fmt_tokens): refactored
+	(_print_token_usage): lazy load Text::ASCIITable
+	* lib/Git/ReleaseDiffs.pm.in
+	(new): die if Git::Raw not installed
+	* lib/Text/ASCIITable/FixANSI.pm.in
+	(BEGIN): lazy load Text::ASCIITable
+	* recommends: moved to suggests
+	* suggests: new from requires
+	* requires
+	- bump version of CLI::Simple 2.1.1
+	- pin versions
+	* cpanfile: combine requires, suggests
+	* requires.skip: moved to suggests
+	* test-requires: CPAN::Maker::Bootstrapper
+	* lib/CPAN/Maker/Bootstrapper/Role/Critic.pm.in: new
+	* lib/CPAN/Maker/Bootstrapper/Role/Filter.pm.in: new
+
 Tue Jul 21 08:15:45 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.0.12]:

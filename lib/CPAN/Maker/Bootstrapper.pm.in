@@ -4,6 +4,9 @@ use strict;
 use warnings;
 
 use CLI::Simple qw(:roles);
+use CLI::Simple::Constants qw(:booleans);
+use IO::Interactive qw(is_interactive);
+
 use parent qw(CLI::Simple);
 
 our $VERSION = '@PACKAGE_VERSION@';
@@ -12,35 +15,9 @@ use Role::Tiny::With;
 with 'CPAN::Maker::Bootstrapper::Role::Init';
 with 'CPAN::Maker::Bootstrapper::Role::LLM::Utils';
 
-Readonly::Scalar our $LOG4PERL_CONF => <<'END_OF_CONF';
-log4perl.logger = INFO, Screen
-log4perl.appender.Screen = Log::Log4perl::Appender::ScreenColoredLevels
-log4perl.appender.Screen.stderr = 1
-log4perl.appender.Screen.layout = Log::Log4perl::Layout::PatternLayout
-log4perl.appender.Screen.layout.ConversionPattern = [%d] %m%n
-log4perl.appender.Screen.color.DEBUG=magenta
-log4perl.appender.Screen.color.INFO=green
-log4perl.appender.Screen.color.WARN=yellow
-log4perl.appender.Screen.color.ERROR=red
-log4perl.appender.Screen.color.FATAL=bold red
-log4perl.appender.Screen.color.TRACE=bold white
-END_OF_CONF
-
-__PACKAGE__->use_log4perl( level => 'info', config => $LOG4PERL_CONF );
+__PACKAGE__->use_log4perl( level => 'info', color => $TRUE, info_color => 'white' );
 
 caller or exit __PACKAGE__->main;
-
-########################################################################
-sub init_logger {
-########################################################################
-  my ($self) = @_;
-
-  if ( !$self->get_color ) {
-    $self->set_log4perl_conf(undef);
-  }
-
-  return $self->SUPER::init_logger;
-}
 
 1;
 
