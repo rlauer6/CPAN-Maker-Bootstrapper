@@ -90,12 +90,12 @@ DEPS += \
     cpanfile \
     test-requires \
     $(UNIT_TEST_NAME) \
-    update-available \
     ChangeLog
 
 .DEFAULT_GOAL := $(TARBALL)
 
-all: update-available 
+.PHONY: all
+all: $(TARBALL)
 
 include .includes/perl.mk
 
@@ -113,6 +113,8 @@ bin/%: bin/%.in
 quick: ## quick build, turns off scanning, perltidy, perlcritic
 	$(NO_ECHO)$(MAKE) SCAN=off LINT=off
 
+.INTERMEDIATE: cpanfile.requires cpanfile.suggests cpanfile.recommends
+
 cpanfile.requires: requires test-requires
 	$(NO_ECHO)$(CPAN_MAKER) create-cpanfile --dependency-type requires $+ -o $@;
 
@@ -123,13 +125,12 @@ cpanfile.recommends: recommends
 	$(NO_ECHO)$(CPAN_MAKER) create-cpanfile --dependency-type recommends $< -o $@;
 
 cpanfile: cpanfile.requires cpanfile.suggests cpanfile.recommends 
-	$(NO_ECHO)rm -f $@; trap 'rm -f $+' EXIT; \
+	$(NO_ECHO)rm -f $@; \
 	for a in $+; do \
 	  cat $$a >>$@; \
 	done
 
-$(TARBALL): $(DEPS) \
-    check-syntax \
+$(TARBALL): $(DEPS) | update-available \
     $(if $(tidy_on), $(PERL_MODULES:%=%.tdy) $(PERL_BIN_FILES:%=%.tdy)) \
     $(if $(critic_on), $(PERL_MODULES:%=%.crit) $(PERL_BIN_FILES:%=%.crit))
 	$(NO_ECHO)if [[ -z "$(NO_COLOR)" ]]; then \
@@ -207,6 +208,8 @@ modulino: modulino.tmpl ## creates a bash script that calls your modulino (MODUL
 	    -e "s/[@]ALIAS[@]/$$ALIAS/" $< > "$${modulino}.in"; \
 	test -e .gitignore && { grep -q "$$modulino" .gitignore || echo "$$modulino" >> .gitignore; }; \
 	echo "$$modulino"
+
+.INTERMEDIATE: requires.raw recommends.raw suggests.raw test-requires.raw
 
 requires.raw recommends.raw suggests.raw &: $(SOURCE_FILES) ## single scan producing all three library dependency tiers
 	$(NO_ECHO)printf '%s\n' $(SOURCE_FILES) > file_list.tmp; \
@@ -376,7 +379,7 @@ check: $(GSOURCE_FILES) ## syntax check and create source from .in file
 # so there's no chicken-and-egg with $(PERL_MODULES) needing to be
 # built before deps.mk can be regenerated, and 'make clean' can never
 # trigger a rebuild through this include (clean doesn't touch .pm.in).
-deps.mk: $(SOURCE_FILES:%=%.in)
+deps.mk: $(SOURCE_FILES)
 	$(NO_ECHO)cmb create-deps > $@
 
 .PHONY: package

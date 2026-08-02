@@ -2024,7 +2024,7 @@ Text::ASCIITable;
 <pre><code>Term::ANSIColor
 </code></pre>
 <a id="version" class="anchor" aria-label="Permalink: VERSION" href="#version"><span aria-hidden="true" class="octicon octicon-link"></span></a><h1 class="heading-element">VERSION</h1>
-<p>This documentation refers to version 2.0.13</p>
+<p>This documentation refers to version 2.0.14</p>
 <a id="author" class="anchor" aria-label="Permalink: AUTHOR" href="#author"><span aria-hidden="true" class="octicon octicon-link"></span></a><h1 class="heading-element">AUTHOR</h1>
 <p>Rob Lauer - <a href="mailto:rlauer@treasurersbriefcase.com">rlauer@treasurersbriefcase.com</a></p>
 <a id="license" class="anchor" aria-label="Permalink: LICENSE" href="#license"><span aria-hidden="true" class="octicon octicon-link"></span></a><h1 class="heading-element">LICENSE</h1>

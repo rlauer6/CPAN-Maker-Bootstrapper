@@ -1,3 +1,16 @@
+Sun Aug  2 09:20:22 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.0.14]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.0.14.md: new
+	* VERSION: bump
+	* README.md: generated
+	* Makefile
+	- declare requires.raw recommends.raw suggests.raw test-requires.raw as .INTERMEDIATE
+	- declare cpanfile.requires cpanfile.suggests cpanfile.recommends as .INTERMEDIATE
+	- remove check-syntax, update-available from dependency list
+	(deps.mk): no need to translate file names
+
 Sat Jul 25 06:24:38 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.0.13]:
