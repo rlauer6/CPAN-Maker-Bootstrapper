@@ -1,3 +1,41 @@
+Mon Aug  3 14:42:15 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.1.0]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.0.15.md: new
+	* VERSION: bump
+	* README.md: generated
+	* MANIFEST: +bash-completion.mk, modulino.ml
+	* buildspec.yml
+	- likewise
+	* .includes/update.mk
+	- likewise
+	- don't rewrite Makefile until after all updates
+	* .includes/help.mk: run help text through a pager
+	* .includes/release-notes.mk
+	- fix comment
+	- support DRYRUN mode
+	* Makefile
+	- move modulino recipe to .icludes/modulino.mk
+	- include .includes/bash-completion.mk
+	* cpan-maker-bootstrapper.yml
+	- aliases
+	- formatting
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Annotator.pm.in
+	- _loadASCIITable -> _load_ASCIITable
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Models.pm.in: likewise
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Reviewer.pm.in: likewise
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/ReleaseNotes.pm.in
+	(cmd_release_notes)
+	- hook for adding custom release-notes prompt
+	- dryrun mode for just producing the artifacts that are fed to Claude
+	* project.mk
+	- remove recipes now in deps.mk
+	* .includes/bash-completion.mk: new
+	* .includes/modulino.mk: new
+	* requires: new versions pinned
+	* cpanfile: likewise
+
 Sun Aug  2 09:20:22 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.0.14]:

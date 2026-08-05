@@ -30,6 +30,8 @@ extra-files:
     - .includes/update.mk
     - .includes/upgrade.mk
     - .includes/version.mk
+    - .includes/modulino.mk
+    - .includes/bash-completion.mk
     - .prompts/code-review.prompt
     - .prompts/pod-review.prompt
     - cli-module.pm.tmpl

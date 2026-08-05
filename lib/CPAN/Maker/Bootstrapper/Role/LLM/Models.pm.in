@@ -15,7 +15,7 @@ sub cmd_models {
 ########################################################################
   my ($self) = @_;
 
-  $self->_loadASCIITable;
+  $self->_load_ASCIITable;
 
   my ($api_key) = $self->get_args;
 

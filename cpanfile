@@ -1,6 +1,6 @@
-requires "CLI::Simple", "2.1.1";
-requires "CLI::Simple::Constants", "2.1.1";
-requires "CLI::Simple::Utils", "2.1.1";
+requires "CLI::Simple", "2.2.1";
+requires "CLI::Simple::Constants", "2.2.1";
+requires "CLI::Simple::Utils", "2.2.1";
 requires "Class::Accessor::Fast", "0.51";
 requires "Config::Tiny", "2.30";
 requires "Email::Valid", "1.204";
@@ -11,7 +11,7 @@ requires "IO::Interactive", "1.027";
 requires "IO::Scalar", "2.113";
 requires "JSON", "4.10";
 requires "Module::Metadata", "1.000038";
-requires "Module::ScanDeps::Static", "1.9.2";
+requires "Module::ScanDeps::Static", "1.9.3";
 requires "Pod::Extract", "1.0.2";
 requires "Readonly", "2.05";
 requires "Role::Tiny", "2.002004";

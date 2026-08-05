@@ -5,7 +5,7 @@ commands:
   code-review:        CPAN::Maker::Bootstrapper::Role::LLM::Reviewer
   create-config:      CPAN::Maker::Bootstrapper::Role::CreateConfig
   create-deps:        CPAN::Maker::Bootstrapper::Role::CreateDeps
-  critique:            CPAN::Maker::Bootstrapper::Role::Critic
+  critique:           CPAN::Maker::Bootstrapper::Role::Critic
   default:            cmd_install
   filter:             CPAN::Maker::Bootstrapper::Role::Filter 
   install:            CPAN::Maker::Bootstrapper::Role::Installer
@@ -44,6 +44,9 @@ options:
 - resources|r=s
 - stub|s=s
 - username|u=s
+alias:
+  options:
+    dryrun: dry-run
 extra_options:
   - llm
   - llm_api_key_helper

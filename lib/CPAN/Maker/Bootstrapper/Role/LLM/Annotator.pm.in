@@ -18,6 +18,7 @@ use File::Copy;
 use File::Temp qw(tempfile);
 use JSON;
 use List::Util qw(none);
+
 use Role::Tiny;
 
 ########################################################################
@@ -76,7 +77,7 @@ sub cmd_annotate {
 ########################################################################
   my ($self) = @_;
 
-  $self->_loadASCIITable;
+  $self->_load_ASCIITable;
 
   my ( $file, $api_key ) = $self->get_args;
 

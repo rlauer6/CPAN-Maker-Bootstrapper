@@ -126,7 +126,7 @@ sub cmd_pod_finding {
 ########################################################################
   my ($self) = @_;
 
-  $self->_loadASCIITable;
+  $self->_load_ASCIITable;
 
   my ($file) = $self->get_args;
 
@@ -187,7 +187,7 @@ sub cmd_code_review {
 ########################################################################
   my ($self) = @_;
 
-  $self->_loadASCIITable;
+  $self->_load_ASCIITable;
 
   my ( $file, $api_key ) = $self->get_args;
 
@@ -218,7 +218,7 @@ sub cmd_pod_review {
 ########################################################################
   my ($self) = @_;
 
-  $self->_loadASCIITable;
+  $self->_load_ASCIITable;
 
   my ( $file, $api_key ) = $self->get_args;
 
@@ -378,7 +378,7 @@ sub cmd_code_finding {
 ########################################################################
   my ($self) = @_;
 
-  $self->_loadASCIITable;
+  $self->_load_ASCIITable;
 
   my ( $file, $finding_id ) = $self->get_args;
 
