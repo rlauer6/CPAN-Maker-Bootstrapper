@@ -10,6 +10,7 @@ requires "File::ShareDir", "1.118";
 requires "IO::Interactive", "1.027";
 requires "IO::Scalar", "2.113";
 requires "JSON", "4.10";
+requires "Log::Log4perl", "0";
 requires "Module::Metadata", "1.000038";
 requires "Module::ScanDeps::Static", "1.9.3";
 requires "Pod::Extract", "1.0.2";

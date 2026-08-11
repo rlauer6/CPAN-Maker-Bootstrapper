@@ -1810,6 +1810,76 @@ I<Note: These two mechanisms are independent - C<+> controls whether an entry
 survives rescans, while the version number controls what version is
 required.>
 
+=head3 The local dependency library
+
+Syntax checking is performed in a I<hermetic> environment: each generated
+F<.pm> is compiled with C<perl -wc> against C<lib> and a project-local
+library at F<local/lib/perl5> only, with C<PERL5LIB> explicitly cleared for
+the check. This ensures a module's dependencies are actually declared and
+installed, rather than being satisfied by chance from whatever happens to be
+in your C<PERL5LIB> or system C<@INC>. A dependency that compiles on your
+machine but is missing from F<requires> will fail the build here instead of
+surprising you on a clean install or CI box.
+
+To populate that library, the build installs your declared dependencies into
+F<local/> using C<cpm> (preferred) or C<carton>:
+
+  make local        # installs requires/recommends/suggests into local/lib/perl5
+
+This runs automatically as a prerequisite of the module build, so a
+normal C<make> installs dependencies first, then syntax-checks against
+them. C<cpm> is preferred because it supports multiple mirrors (see
+F<build-mirrors>); C<carton> is supported but resolves against a
+single mirror -- its default, or the one named in
+C<PERL_CARTON_MIRROR>. Multiple mirrors may be specified in the
+F<cpanfile> for both C<carton> and C<cpm>.
+
+The use of a F<build-mirrors> file versus specifying the mirrors in
+the dependency files determines the scope of their
+use. F<build-mirrors> (and F<cpanfile> mirror declarations) set the
+resolvers used for B<every> dependency in the build. To route a
+B<single> module to a specific mirror, URL, or distribution -- without
+affecting how anything else resolves -- annotate that module's entry
+in F<requires> with C<mirror=>, C<url=>, or C<dist=> (see
+L</build-mirrors>).
+
+The C<+> prefix has a second use beyond protecting mirror annotations.
+Because the check is hermetic, B<a module reached only at runtime will not
+be found unless it is declared>. Static scanning (C<scandeps-static.pl>)
+cannot see a dependency loaded dynamically -- for example a module pulled
+in through a method call rather than a C<use> statement -- so it will never
+add it to F<requires>. Declare such modules explicitly with C<+>, which
+makes the entry sticky and survives every rescan:
+
+  +Log::Log4perl    # loaded at runtime via a framework call; scanner can't see it
+
+=head3 build-mirrors
+
+When using the preferred CPAN installer (C<cpm>), the build system
+reads mirror URLs, one per line, from a F<build-mirrors> file in the
+project root and passes each as a resolver. This lets the build
+resolve dependencies from a private DarkPAN in addition to (or instead
+of) the public CPAN. If F<build-mirrors> is absent, the installer uses
+its default mirror.
+
+When C<carton> is used, because it does not support multiple mirrors
+when setting the mirror using an environment variable, the build
+system will use the first mirror in your F<build-mirrors> file if
+present. C<carton> supports multiple mirrors by specifying them the
+in F<cpanfile>.
+
+Entries in F<requires>, F<suggests>, and F<recommends> may carry optional
+qualifiers after the version to control where a module resolves from:
+
+  +Foo::Bar 1.0 mirror=https://cpan.openbedrock.net/orepan2
+  +Baz::Qux 2.5 url=https://example.com/authors/id/D/DU/DUMMY/Baz-Qux-2.5.tar.gz
+  +Xyz::Abc 0.9 dist=Xyz-Distribution
+
+Only C<dist=>, C<url=>, and C<mirror=> are permitted after the version;
+anything else is an error. Prefix such entries with the sticky C<+> so the
+scanner does not strip the annotation on a later rescan. See L<CPAN::Maker>
+for the full format.
+
 =head1 MODULINOS
 
 A modulino is a Perl module that doubles as a runnable script by
@@ -1956,7 +2026,20 @@ The following tool(s) must be on your C<PATH>:
 
 =item * C<curl> - used by C<make upgrade> to query MetaCPAN
 
+=item * C<cpm> or C<carton> - installs declared dependencies into a
+project-local library (F<local/lib/perl5>) for hermetic syntax checking
+
 =back
+
+You can set make variables like C<SYNTAX_CHECKING> in F<config.mk>, which
+is included on every invocation of C<make>, to alter build behavior -- for
+example C<SYNTAX_CHECKING=off> to skip the check when neither installer is
+present (undeclared dependencies then go undetected).
+
+I<Note: neither C<cpm> nor C<carton> is a hard prerequisite of
+C<CPAN::Maker::Bootstrapper> itself; they are needed only to populate the
+local library for hermetic checking. C<cpm> is preferred for its
+multi-mirror support (see L</build-mirrors>).>
 
 =head1 CAVEATS
 
@@ -1965,9 +2048,10 @@ The following tool(s) must be on your C<PATH>:
 =item F<.pm> and F<.pl> Generation
 
 These files are generated from F<.pm.in> and F<.pl.in> files in the
-Makefile by filtering them through a C<sed> command that replaces
-certain tokens like C<E<64>PACKAGE_VERSIONE<64>> with values. The
-generated files are read-only. Always edit the F<.in> file version.
+Makefile by filtering them through a C<cmb resolve-vars> command that
+replaces certain tokens like C<E<64>PACKAGE_VERSIONE<64>> with
+values. The generated files are read-only. Always edit the F<.in> file
+version.
 
 Use C<E<64>PACKAGE_VERSIONE<64>> like this:
 
@@ -2000,6 +2084,15 @@ dependency in F<project.mk>:
 
 This tells make to build C<Foo.pm> first. See L</Inter-module
 dependencies> for details.
+
+A third cause, new to the hermetic build: the module is a real dependency
+that simply isn't installed in F<local/>. Because syntax checking runs
+against F<local/lib/perl5> with C<PERL5LIB> cleared, a dependency that is
+present elsewhere on your system but not declared will fail here. Confirm it
+is in F<requires> (add it with a sticky C<+> if the scanner can't see it --
+see L</Dependencies Management>), then C<make local> to install it. This is
+the check working as intended: it catches a missing declaration on your
+machine instead of on someone else's.
 
 If the module genuinely cannot be loaded outside its runtime
 environment (an Apache handler, a mod_perl module, etc.), add it to

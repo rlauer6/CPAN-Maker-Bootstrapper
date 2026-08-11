@@ -12,6 +12,7 @@ module.pm.tmpl
 *.diffs
 *.lst
 extra-files
+extra-files.mk
 provides
 resources
 bin/cpan-maker-bootstrapper
@@ -26,3 +27,4 @@ bin/bootstrapper
 *.bak
 bin/cmb
 buildspec.yml.current
+local/

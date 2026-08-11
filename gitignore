@@ -15,6 +15,7 @@ test.t.tmpl
 *.diffs
 *.lst
 extra-files
+extra-files.mk
 provides
 resources
 *-review-2*.pod
@@ -22,3 +23,4 @@ resources
 *-review-2*.annotate
 **/*.crit
 **/*.tdy
+local/**

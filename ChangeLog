@@ -1,3 +1,63 @@
+Tue Aug 11 09:08:18 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.2.0]:
+	* README.md: generated
+	* VERSION: bump
+	* .gitignore
+	- +extra-files.mk, local/
+	- pattern rules now use resolve-vars instead of sed to replace tokens
+	* .includes/git.mk
+	(repo): new
+	* .includes/perl.mk
+	- true heremetic builds
+	(gen-vars-file): new
+	* .includes/update.mk: + local.mk
+	* .includes/version.mk
+	- make clean before bumping version
+	* Makefile
+	- use abbreviated name for bootstrapper (cmb)
+	(CPM): new
+	(CARTON): new
+	(GITHUB_ACTIONS): new
+	(CPAN_INSTALLER): new
+	(GIT_SHA): new
+	(GIT_DIRTY): new
+	(find-files): exclude temp files of all sorts
+	(SOURCE_FILES_IN): new
+	(DEPS): + local/
+	(TEMPLATE_VARS): new
+	(PACKAGE_VERSION): new
+	- pattern rules for .in files now use cmb resolve-vars
+	(UNIT_TEST_NAME): likewise
+	(module.pm.tmpl): removed
+	(MODULE_PATH): refactored to prevent unnecessary rebuilds
+	(*.raw): depends on $(SOURCE_FILES_IN) no $(SOURCE_FILES)
+	(requires): likewise
+	(suggests): likewise
+	(recommends): likewise
+	(buildspec.yml): uses cmb resolve-vars instead of sed
+	(CLEANFILES): +extra-files.mk
+	(INSTALLER): rename DOCKER_CPAN_INSTALLER
+	(build-ci): likewise
+	(deps.mk): prevent empty deps.mk
+	(extra-files.mk): refactored to prevent unnecessary builds
+	* builder
+	- only checkout if it is a git repo and we have a BRANCH_NAME
+	* buildspec.yml: +.includes/local.mk
+	* cpan-maker-bootstrapper.yml
+	- new command: resolve-vars
+	- new option: vars-file
+	* cpanfile: +Log::Log4perl
+	* requires: likewise
+	* gitignore: local/**, extra-files.mk
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- POD updates
+	* lib/CPAN/Maker/Bootstrapper/Role/CreateDeps.pm.in
+	(cmd_create_deps)
+	- update regexp so we properly write .pl targets
+	* .includes/local.mk: new
+	* lib/CPAN/Maker/Bootstrapper/Role/ResolveVars.pm.in: new
+
 Mon Aug  3 14:42:15 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.1.0]:

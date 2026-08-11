@@ -86,7 +86,7 @@ sub cmd_create_deps {
     next if @output_modules && none { $p eq "./$_" } @output_modules;
 
     my $generated_p = $p;
-    $generated_p =~ s/\.pm\.in/.pm/;
+    $generated_p =~ s/[.](p[ml])[.]in/.$1/xsm;
 
     my @deps;
 

@@ -16,6 +16,7 @@ commands:
   release-notes:      CPAN::Maker::Bootstrapper::Role::LLM::ReleaseNotes
   update-annotations: CPAN::Maker::Bootstrapper::Role::LLM::Annotator
   extra-files:        CPAN::Maker::Bootstrapper::Role::ExtraFiles
+  resolve-vars:       CPAN::Maker::Bootstrapper::Role::ResolveVars
 options:
 - auto-annotate|A
 - annotate|a=s@
@@ -44,6 +45,7 @@ options:
 - resources|r=s
 - stub|s=s
 - username|u=s
+- vars-file=s
 alias:
   options:
     dryrun: dry-run

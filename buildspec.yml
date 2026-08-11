@@ -25,6 +25,7 @@ extra-files:
     - .github/workflows/build.yml
     - .includes/git.mk
     - .includes/help.mk
+    - .includes/local.mk
     - .includes/perl.mk
     - .includes/release-notes.mk
     - .includes/update.mk
