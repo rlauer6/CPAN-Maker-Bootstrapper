@@ -729,7 +729,7 @@ source file changes; see L</Dependencies Management>.
 =item C<make package>
 
 Runs the quality and dependency gates together (C<lint> plus a
-dependency scan) — a convenience for pre-release verification.
+dependency scan) â a convenience for pre-release verification.
 
 =item C<make release> / C<make minor> / C<make major>
 
@@ -1031,11 +1031,11 @@ workflow.
 
 =item C<--annotate|-a> N:DISPOSITION
 
-See L</annotate>
+See L</THE REVIEW WORKFLOW>
 
 =item C<--auto-annotate|-A>
 
-See L</annotate>
+See L</THE REVIEW WORKFLOW>
 
 =item C<--basedir|-b> DIR
 
@@ -1085,7 +1085,7 @@ git config.
 
 =item C<--finalize-annotations|-F>
 
-See L</annotate>
+See L</THE REVIEW WORKFLOW>
 
 =item C<--force|-f>
 
@@ -1540,20 +1540,100 @@ separated from your project files. The F<Makefile> includes them
 automatically and conditionally includes F<project.mk> from the
 project root:
 
+ -include config.mk
  include .includes/perl.mk
+ include .includes/local.mk
  include .includes/help.mk
  include .includes/version.mk
  include .includes/release-notes.mk
  include .includes/git.mk
  include .includes/update.mk
  include .includes/upgrade.mk
+ include .includes/bash-completion.mk
+ include .includes/modulino.mk
  -include project.mk
+ -include extra-files.mk
 
 F<project.mk> remains in the project root - it is your file, always
 writable, and never touched by C<make update>. The leading C<-> on
 its include means make will not complain if it does not exist yet.
 This gives you a sanctioned, upgrade-safe extension point for
 anything project-specific.
+
+=head2 Immutability Is a Feature
+
+The managed build system is deliberately B<immutable>: the F<Makefile>,
+everything under F<.includes/>, and the generated F<.pm>/F<.pl> files are
+write-protected on purpose. This is a feature, not a restriction. It lets
+C<make update> replace those files with newer, better versions without
+clobbering anything of yours, and it guarantees that two projects on the
+same bootstrapper version build I<identically> -- there is no per-project
+drift hiding in a locally-edited rule.
+
+You I<can> override any of it -- these are your files, and nothing stops you
+from C<chmod +w> and editing a generated module or a managed include. But
+you should not need to, and if you do, C<make update> will overwrite your
+change. Every legitimate customization has a sanctioned hook that survives
+C<make update>:
+
+=over 4
+
+=item * B<Project-specific targets, rules, and build ordering> --
+F<project.mk> (always writable; never touched by C<make update>).
+
+Reach for F<project.mk> when your project needs to do something the
+generic build system can't know about, for example:
+
+=over 4
+
+=item * B<Build a companion artifact> the managed build doesn't produce --
+generate a F<.pm.in> from a JSON/YAML schema, render documentation, compile
+assets, or (as C<Amazon::API> does) build a Storable data file consumed at
+runtime.
+
+=item * B<Declare inter-module build order> the scanner can't infer --
+C<lib/Foo/Bar.pm: lib/Foo.pm> when one module must be built before another.
+
+=item * B<Deploy or publish> -- an C<scp>/upload/notify target that runs
+after C<all>.
+
+=item * B<Extend cleanup> -- a C<clean-local::> double-colon rule to remove
+your own generated files, and C<CLEANFILES +=> for anything else.
+
+=back
+
+See L</What Belongs in F<project.mk>> for worked examples of each, and
+L</What does NOT belong in project.mk> for the line between your extensions
+and the managed core.
+
+=item * B<Build-behavior toggles> (dependency scanning, linting, syntax
+checking, version-drift strictness) -- make variables set on the command
+line or in F<config.mk> (see L</CONFIGURATION> and the variable list below).
+
+=item * B<Template tokens in your source> -- declare them in
+C<TEMPLATE_VARS> and let C<cmb resolve-vars> fill them, rather than
+hand-editing a generated F<.pm> (see L</Custom Template Tokens>).
+
+=item * B<Custom cleanup> -- the C<clean-local::> double-colon target in
+F<project.mk>.
+
+=item * B<Extra distribution files> -- list them in F<buildspec.yml>;
+C<extra-files.mk> wires them into the tarball automatically.
+
+=item * B<Dependencies the scanner cannot see> -- the sticky C<+> prefix in
+F<requires> (see L</Dependencies Management>).
+
+=back
+
+If you find yourself wanting to edit a managed file, check this list first:
+the hook you need almost certainly exists, and using it keeps you on the
+upgrade path instead of forking the build system.
+
+I<Why the generated F<.pm>/F<.pl> files are read-only:> they are regenerated
+from their F<.pm.in>/F<.pl.in> sources on every build, so any edit you make
+directly to a generated F<.pm> would be silently lost on the next C<make>.
+The C<chmod -w> is there to stop you from making that mistake. Edit the
+F<.pm.in> source, not the generated F<.pm>.
 
 =head2 How the Makefile Works
 
@@ -1607,9 +1687,20 @@ to exclude from syntax and POD checks
 or strip it entirely from the built F<.pm>
 
 =item C<PERLINCLUDE="-I path"> - additional include paths used during
-the C<perl -wc> syntax check
+the C<perl -wc> syntax check. Defaults to C<-I lib -I local/lib/perl5>
+for hermetic checking; see L</The local dependency library>.
+
+=item C<CPAN_INSTALLER=cpm|carton> - selects the installer used to
+populate F<local/> for hermetic syntax checking. Auto-detected (C<cpm>
+preferred) if unset.
 
 =back
+
+Two further toggles, C<CMB_UPDATE_CHECK> and C<CMB_VERSION_DRIFT>, are set
+in F<config.mk> rather than on the command line; see L</Automatic Drift and
+Update Checks>. F<config.mk> is read on every invocation of C<make> and is
+the right place for durable, machine- or project-wide build settings such as
+C<SYNTAX_CHECKING=off> on a box without an installer.
 
 =head2 What Belongs in F<project.mk>
 
@@ -1671,6 +1762,37 @@ are owned by the managed Makefile
 
 =back
 
+=head2 Custom Template Tokens
+
+The build generates each F<.pm>/F<.pl> from its F<.pm.in>/F<.pl.in> source
+by substituting C<E<64>TOKENE<64>> placeholders through C<cmb resolve-vars>.
+The standard tokens (C<E<64>PACKAGE_VERSIONE<64>>, C<E<64>MODULE_NAMEE<64>>,
+C<E<64>GIT_SHAE<64>>, and the other git-metadata variables) are always
+available, but the mechanism is extensible: a project can define its own
+tokens without editing any managed file.
+
+To add a token, declare its name in C<TEMPLATE_VARS> (in F<project.mk>) and
+provide a value -- as a make variable, an exported environment variable, or
+via the C<.vars> sidecar. For example, to stamp a build timestamp:
+
+  # in project.mk
+  BUILD_DATE      := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+  TEMPLATE_VARS   += BUILD_DATE
+
+  # in a .pm.in source
+  our $BUILD_DATE = 'E<64>BUILD_DATEE<64>';
+
+C<cmb resolve-vars> then fills C<E<64>BUILD_DATEE<64>> from the value on
+every build. The token grammar is uppercase-only (C<E<64>[A-Z0-9_]+E<64>>),
+so placeholders never collide with real Perl such as C<@_> or C<@ISA>.
+
+The substitution is B<fail-loud>: if a source contains a
+C<E<64>TOKENE<64>> that is not resolved -- because it was never declared, or
+declared but left empty -- the build stops and names the offending token,
+rather than silently substituting an empty string and producing a subtly
+broken module. This is what makes custom tokens safe to rely on: a missing
+value is a build error, not a runtime surprise.
+
 =head2 Keeping the build system up to date
 
 The following targets manage the lifecycle of the build system itself:
@@ -1698,13 +1820,16 @@ to revert any changes you don't want.
 The following files are managed and may be updated:
 
  Makefile
+ .includes/perl.mk
+ .includes/local.mk
  .includes/git.mk
  .includes/help.mk
  .includes/update.mk
  .includes/upgrade.mk
  .includes/version.mk
- .includes/perl.mk
  .includes/release-notes.mk
+ .includes/bash-completion.mk
+ .includes/modulino.mk
  modulino.tmpl
 
 Your F<project.mk>, F<buildspec.yml>, F<requires>, F<VERSION>, source
@@ -1865,8 +1990,8 @@ its default mirror.
 When C<carton> is used, because it does not support multiple mirrors
 when setting the mirror using an environment variable, the build
 system will use the first mirror in your F<build-mirrors> file if
-present. C<carton> supports multiple mirrors by specifying them the
-in F<cpanfile>.
+present. C<carton> supports multiple mirrors only by specifying them
+in the F<cpanfile>.
 
 Entries in F<requires>, F<suggests>, and F<recommends> may carry optional
 qualifiers after the version to control where a module resolves from:

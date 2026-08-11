@@ -39,9 +39,11 @@
     * [Creating Custom Profiles](#creating-custom-profiles)
     * [Planned Profiles](#planned-profiles)
 * [EXTENDING THE BUILD SYSTEM](#extending-the-build-system)
+  * [Immutability Is a Feature](#immutability-is-a-feature)
   * [How the Makefile Works](#how-the-makefile-works)
   * [What Belongs in `project.mk`](#what-belongs-in-projectmk)
   * [What does NOT belong in project.mk](#what-does-not-belong-in-projectmk)
+  * [Custom Template Tokens](#custom-template-tokens)
   * [Keeping the build system up to date](#keeping-the-build-system-up-to-date)
   * [Automatic Drift and Update Checks](#automatic-drift-and-update-checks)
   * [What You Should Never Modify](#what-you-should-never-modify)
@@ -702,7 +704,7 @@ Key Makefile targets:
 - `make package`
 
     Runs the quality and dependency gates together (`lint` plus a
-    dependency scan) â a convenience for pre-release verification.
+    dependency scan) Ã¢ÂÂ a convenience for pre-release verification.
 
 - `make release` / `make minor` / `make major`
 
@@ -992,11 +994,11 @@ would be visible in shell history and process listings._
 
 - `--annotate|-a` N:DISPOSITION
 
-    See ["annotate"](#annotate)
+    See ["THE REVIEW WORKFLOW"](#the-review-workflow)
 
 - `--auto-annotate|-A`
 
-    See ["annotate"](#annotate)
+    See ["THE REVIEW WORKFLOW"](#the-review-workflow)
 
 - `--basedir|-b` DIR
 
@@ -1046,7 +1048,7 @@ would be visible in shell history and process listings._
 
 - `--finalize-annotations|-F`
 
-    See ["annotate"](#annotate)
+    See ["THE REVIEW WORKFLOW"](#the-review-workflow)
 
 - `--force|-f`
 
@@ -1464,20 +1466,85 @@ separated from your project files. The `Makefile` includes them
 automatically and conditionally includes `project.mk` from the
 project root:
 
+    -include config.mk
     include .includes/perl.mk
+    include .includes/local.mk
     include .includes/help.mk
     include .includes/version.mk
     include .includes/release-notes.mk
     include .includes/git.mk
     include .includes/update.mk
     include .includes/upgrade.mk
+    include .includes/bash-completion.mk
+    include .includes/modulino.mk
     -include project.mk
+    -include extra-files.mk
 
 `project.mk` remains in the project root - it is your file, always
 writable, and never touched by `make update`. The leading `-` on
 its include means make will not complain if it does not exist yet.
 This gives you a sanctioned, upgrade-safe extension point for
 anything project-specific.
+
+## Immutability Is a Feature
+
+The managed build system is deliberately **immutable**: the `Makefile`,
+everything under `.includes/`, and the generated `.pm`/`.pl` files are
+write-protected on purpose. This is a feature, not a restriction. It lets
+`make update` replace those files with newer, better versions without
+clobbering anything of yours, and it guarantees that two projects on the
+same bootstrapper version build _identically_ -- there is no per-project
+drift hiding in a locally-edited rule.
+
+You _can_ override any of it -- these are your files, and nothing stops you
+from `chmod +w` and editing a generated module or a managed include. But
+you should not need to, and if you do, `make update` will overwrite your
+change. Every legitimate customization has a sanctioned hook that survives
+`make update`:
+
+- **Project-specific targets, rules, and build ordering** --
+`project.mk` (always writable; never touched by `make update`).
+
+    Reach for `project.mk` when your project needs to do something the
+    generic build system can't know about, for example:
+
+    - **Build a companion artifact** the managed build doesn't produce --
+    generate a `.pm.in` from a JSON/YAML schema, render documentation, compile
+    assets, or (as `Amazon::API` does) build a Storable data file consumed at
+    runtime.
+    - **Declare inter-module build order** the scanner can't infer --
+    `lib/Foo/Bar.pm: lib/Foo.pm` when one module must be built before another.
+    - **Deploy or publish** -- an `scp`/upload/notify target that runs
+    after `all`.
+    - **Extend cleanup** -- a `clean-local::` double-colon rule to remove
+    your own generated files, and `CLEANFILES +=` for anything else.
+
+    See ["What Belongs in `project.mk`"](#what-belongs-in-project-mk) for worked examples of each, and
+    ["What does NOT belong in project.mk"](#what-does-not-belong-in-project-mk) for the line between your extensions
+    and the managed core.
+
+- **Build-behavior toggles** (dependency scanning, linting, syntax
+checking, version-drift strictness) -- make variables set on the command
+line or in `config.mk` (see ["CONFIGURATION"](#configuration) and the variable list below).
+- **Template tokens in your source** -- declare them in
+`TEMPLATE_VARS` and let `cmb resolve-vars` fill them, rather than
+hand-editing a generated `.pm` (see ["Custom Template Tokens"](#custom-template-tokens)).
+- **Custom cleanup** -- the `clean-local::` double-colon target in
+`project.mk`.
+- **Extra distribution files** -- list them in `buildspec.yml`;
+`extra-files.mk` wires them into the tarball automatically.
+- **Dependencies the scanner cannot see** -- the sticky `+` prefix in
+`requires` (see ["Dependencies Management"](#dependencies-management)).
+
+If you find yourself wanting to edit a managed file, check this list first:
+the hook you need almost certainly exists, and using it keeps you on the
+upgrade path instead of forking the build system.
+
+_Why the generated `.pm`/`.pl` files are read-only:_ they are regenerated
+from their `.pm.in`/`.pl.in` sources on every build, so any edit you make
+directly to a generated `.pm` would be silently lost on the next `make`.
+The `chmod -w` is there to stop you from making that mistake. Edit the
+`.pm.in` source, not the generated `.pm`.
 
 ## How the Makefile Works
 
@@ -1513,7 +1580,17 @@ to exclude from syntax and POD checks
 - `POD=extract|remove` - extract POD to a companion `.pod` file
 or strip it entirely from the built `.pm`
 - `PERLINCLUDE="-I path"` - additional include paths used during
-the `perl -wc` syntax check
+the `perl -wc` syntax check. Defaults to `-I lib -I local/lib/perl5`
+for hermetic checking; see ["The local dependency library"](#the-local-dependency-library).
+- `CPAN_INSTALLER=cpm|carton` - selects the installer used to
+populate `local/` for hermetic syntax checking. Auto-detected (`cpm`
+preferred) if unset.
+
+Two further toggles, `CMB_UPDATE_CHECK` and `CMB_VERSION_DRIFT`, are set
+in `config.mk` rather than on the command line; see ["Automatic Drift and
+Update Checks"](#automatic-drift-and-update-checks). `config.mk` is read on every invocation of `make` and is
+the right place for durable, machine- or project-wide build settings such as
+`SYNTAX_CHECKING=off` on a box without an installer.
 
 ## What Belongs in `project.mk`
 
@@ -1565,6 +1642,37 @@ the `perl -wc` syntax check
 are owned by the managed Makefile
 - Anything that duplicates logic already in the managed Makefile
 
+## Custom Template Tokens
+
+The build generates each `.pm`/`.pl` from its `.pm.in`/`.pl.in` source
+by substituting `@TOKEN@` placeholders through `cmb resolve-vars`.
+The standard tokens (`@PACKAGE_VERSION@`, `@MODULE_NAME@`,
+`@GIT_SHA@`, and the other git-metadata variables) are always
+available, but the mechanism is extensible: a project can define its own
+tokens without editing any managed file.
+
+To add a token, declare its name in `TEMPLATE_VARS` (in `project.mk`) and
+provide a value -- as a make variable, an exported environment variable, or
+via the `.vars` sidecar. For example, to stamp a build timestamp:
+
+    # in project.mk
+    BUILD_DATE      := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+    TEMPLATE_VARS   += BUILD_DATE
+
+    # in a .pm.in source
+    our $BUILD_DATE = 'E<64>BUILD_DATEE<64>';
+
+`cmb resolve-vars` then fills `@BUILD_DATE@` from the value on
+every build. The token grammar is uppercase-only (`@[A-Z0-9_]+@`),
+so placeholders never collide with real Perl such as `@_` or `@ISA`.
+
+The substitution is **fail-loud**: if a source contains a
+`@TOKEN@` that is not resolved -- because it was never declared, or
+declared but left empty -- the build stops and names the offending token,
+rather than silently substituting an empty string and producing a subtly
+broken module. This is what makes custom tokens safe to rely on: a missing
+value is a build error, not a runtime surprise.
+
 ## Keeping the build system up to date
 
 The following targets manage the lifecycle of the build system itself:
@@ -1590,13 +1698,16 @@ The following targets manage the lifecycle of the build system itself:
     The following files are managed and may be updated:
 
         Makefile
+        .includes/perl.mk
+        .includes/local.mk
         .includes/git.mk
         .includes/help.mk
         .includes/update.mk
         .includes/upgrade.mk
         .includes/version.mk
-        .includes/perl.mk
         .includes/release-notes.mk
+        .includes/bash-completion.mk
+        .includes/modulino.mk
         modulino.tmpl
 
     Your `project.mk`, `buildspec.yml`, `requires`, `VERSION`, source
@@ -1742,8 +1853,8 @@ its default mirror.
 When `carton` is used, because it does not support multiple mirrors
 when setting the mirror using an environment variable, the build
 system will use the first mirror in your `build-mirrors` file if
-present. `carton` supports multiple mirrors by specifying them the
-in `cpanfile`.
+present. `carton` supports multiple mirrors only by specifying them
+in the `cpanfile`.
 
 Entries in `requires`, `suggests`, and `recommends` may carry optional
 qualifiers after the version to control where a module resolves from:
@@ -2272,7 +2383,7 @@ tools.
 
 # VERSION
 
-This documentation refers to version 2.2.0
+This documentation refers to version 2.2.1
 
 # AUTHOR
 

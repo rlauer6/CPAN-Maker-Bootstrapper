@@ -135,7 +135,7 @@ TEMPLATE_VARS += \
     GIT_NAME \
     PROJECT_NAME \
 
-include .includes/local.mk
+-include .includes/local.mk
 
 include .includes/perl.mk
 
