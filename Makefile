@@ -44,11 +44,7 @@ CARTON         := $(shell command -v carton)
 CPAN_INSTALLER ?= $(firstword $(CPM) $(CARTON))
 
 ifeq ($(CPAN_INSTALLER),)
-  $(warning no cpm/carton found — set SYNTAX_CHECKING=off if builds fail to find dependencies)
-else
-  ifndef MAKE_RESTARTS
-    $(info using $(CPAN_INSTALLER) to install dependencies in ./local)
-  endif
+  $(warning no cpm/carton found -- set SYNTAX_CHECKING=off if builds fail to find dependencies)
 endif
 
 ifeq ($(MD_UTILS),)

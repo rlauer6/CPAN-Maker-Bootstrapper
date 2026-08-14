@@ -19,7 +19,9 @@ sub find_modules {
 
   find(
     sub {
-      return if $File::Find::name !~ /[.]p[ml][.]in$/xsm;
+      return if !/[.]p[ml][.]in$/xsm;
+      return if /^[.]?[#]/xsm;  # ignore temp files
+
       push @modules, $File::Find::name;
     },
     q{.}

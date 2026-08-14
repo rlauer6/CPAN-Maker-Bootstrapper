@@ -2383,7 +2383,7 @@ tools.
 
 # VERSION
 
-This documentation refers to version 2.2.1
+This documentation refers to version 2.2.2
 
 # AUTHOR
 

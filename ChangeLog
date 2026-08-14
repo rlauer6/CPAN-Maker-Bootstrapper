@@ -1,3 +1,19 @@
+Fri Aug 14 04:36:51 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.2.2]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.2.2.md: new
+	* VERSION: bump
+	* README.md: generated
+	* .includes/local.mk
+	- --show-build-log-on-failure
+	* Makefile: removed annoying info message re: installer
+	* README.md: modified
+	* VERSION: modified
+	* lib/CPAN/Maker/Bootstrapper/Role/CreateDeps.pm.in
+	(find_modules)
+	- ignore temp files
+
 Tue Aug 11 12:58:05 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.2.1]:
@@ -8,6 +24,8 @@ Tue Aug 11 12:58:05 2026  Rob Lauer  <rclauer@gmail.com>
 Tue Aug 11 09:08:18 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.2.0]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.2.0.md: new
 	* README.md: generated
 	* VERSION: bump
 	* .gitignore
@@ -69,7 +87,7 @@ Mon Aug  3 14:42:15 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.1.0]:
 	* release-notes.md: updated
-	* release-notes/release-notes-2.0.15.md: new
+	* release-notes/release-notes-2.1.0.md: new
 	* VERSION: bump
 	* README.md: generated
 	* MANIFEST: +bash-completion.mk, modulino.ml
