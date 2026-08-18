@@ -170,6 +170,12 @@ sub cmd_install {
 
   @args = grep {defined} $module_name_arg, $stub_arg;
 
+  if ( $ENV{BUILD_MIRRORS} ) {
+    open my $fh, '>', 'build-mirrors';
+    print {$fh} join "\n", split /,/xsm, $ENV{BUILD_MIRRORS};
+    close $fh;
+  }
+
   my $rc = system 'make', @args;
 
   open STDOUT, '>&', $old_stdout or die $OS_ERROR;

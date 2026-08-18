@@ -3,6 +3,7 @@ git.mk
 help.mk
 perl.mk
 release-notes.mk
+local.mk
 update.mk
 upgrade.mk
 modulino.mk

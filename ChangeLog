@@ -1,3 +1,22 @@
+Tue Aug 18 17:14:54 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.2.3]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.2.3.md: new
+	* VERSION: bump
+	* README.md: generated
+	* MANIFEST: +local.mk
+	* Makefile
+	(GIT_DIRTY): echo 'unknown'
+	(TEMPLATE_VARS): +MIN_PERL_VERSION
+	(buildspec.yml)
+	- call gen-vars
+	- rm buildspec.yml.tmpl.vars
+	- resolve-vars looks for buildspe.yml.tmpl.var by default now
+	* lib/CPAN/Maker/Bootstrapper/Role/Installer.pm.in
+	(cmd_install)
+	- add environment variable BUILD_MIRRORS to build-mirrors
+
 Fri Aug 14 04:36:51 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.2.2]:
