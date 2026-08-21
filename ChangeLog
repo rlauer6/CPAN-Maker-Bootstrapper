@@ -1,3 +1,30 @@
+Thu Aug 20 14:57:26 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.3.0]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.3.0.md: new
+	* VERSION: bump
+	* README.md: generated
+	* requires
+	- +CPAN::Maker 2.0.9, -CLI::Simple::Utils, ::Constants
+	- bump CLI::Simple 2.2.2
+	* cpanfile: likewise
+	* builder
+	- install_deps => install_build_deps
+	- reduce actual build time requires by removing run-time requires
+	- require projects to include 'build-requires' for things like Markdown::Render
+	- warn user to add CPAN::Maker::Bootstrapper to build-requires
+	- add local/lib/perl5 to PERL5LIB for local hermetic checking
+	* cpan-maker-bootstrapper.yml
+	- + --strict, --no-strict option (default: strict)
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- +$GIT_SHA, +$GIT_DIRTY
+	* lib/CPAN/Maker/Bootstrapper/Role/ResolveVars.pm.in
+	(_resolve_vars)
+	- avoid reporting issues with template vars in POD or comments
+	* .includes/perl.mk
+	- all order only dependency on local directory only when SYNTAX_CHECKING is on
+
 Tue Aug 18 17:14:54 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.2.3]:

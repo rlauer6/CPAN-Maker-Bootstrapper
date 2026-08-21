@@ -172,11 +172,13 @@ or fails to compile, the build - and therefore `install` - will fail.
 Disable these gates with environment variables if you want to
 bootstrap first and clean up after:_
 
-    make LINT=off SKIP_TESTS=1
+    make LINT=off SYNTAX_CHECKING=off SKIP_TESTS=1
 
-_`LINT` is interpreted by the build system installed by this
-module; `SKIP_TESTS` is interpreted by [CPAN::Maker](https://metacpan.org/pod/CPAN%3A%3AMaker) to skip
-running the test suite when building the distribution tarball._
+_`LINT` disables perltidy and perlcritic; `SYNTAX_CHECKING`
+disables the `perl -wc` check -- both are interpreted by the build
+system installed by this module. `SKIP_TESTS` is interpreted by
+[CPAN::Maker](https://metacpan.org/pod/CPAN%3A%3AMaker) to skip running the test suite when building the
+distribution tarball._
 
 **Have an existing project?**
 
@@ -868,6 +870,35 @@ If you want a different `README.md` generated create a
     `PERLCRITICRC` environment variables. Requires [Perl::Critic](https://metacpan.org/pod/Perl%3A%3ACritic) to be
     installed.
 
+- resolve-vars
+
+        cmb resolve-vars [--vars-file FILE] [--no-strict] source-file
+
+    Filters `source-file` to STDOUT, substituting `@TOKEN@` placeholders
+    with values drawn from the environment (or from a `--vars-file`). This
+    is the mechanism the generated `Makefile` uses to turn `.pm.in` and
+    `.pl.in` sources into their built `.pm`/`.pl` counterparts -- for
+    example filling `2.3.0` from the `VERSION` file or
+    `@BUILD_DATE@` at build time.
+
+    A placeholder is only _required_ to resolve if it appears in live code.
+    Placeholders that occur solely inside POD or `#` comments are treated as
+    references, not substitutions: they never trigger a "no value present"
+    error and are left untouched when no value is available. This lets you
+    document a token in your POD (e.g. mention `@BUILD_DATE@` in a
+    description) without breaking the build.
+
+    For placeholders that _do_ appear in code, behavior depends on
+    `--strict` (the default):
+
+    - **strict** (default) - a placeholder in code with no value is a
+    fatal error; the build stops.
+    - **--no-strict** - a placeholder in code with no value produces a
+    warning and is left in place literally (as `@TOKEN@`) rather than being
+    substituted to an empty string.
+
+    See ["--vars-file"](#vars-file) and ["--strict, --no-strict"](#strict-no-strict).
+
 ## LLM Commands
 
 The following commands require [LLM::API](https://metacpan.org/pod/LLM%3A%3AAPI) to be installed and a valid
@@ -1164,6 +1195,19 @@ would be visible in shell history and process listings._
     resources section of `Makefile.PL` should be populated with GitHub
     URL references. Future versions may support additional providers.
 
+- `--strict`, `--no-strict`
+
+    Controls how `resolve-vars` treats an `@TOKEN@` placeholder that
+    appears in code but has no value in the environment or `--vars-file`.
+    `--strict` (the default) makes this a fatal error. `--no-strict`
+    downgrades it to a warning and leaves the placeholder literal in the
+    output.
+
+    This affects code placeholders only. Placeholders that appear solely in
+    POD or `#` comments are always ignored by the missing-value check
+    regardless of this flag, so `--no-strict` is not needed merely to
+    document a token.
+
 - `--stub|-s` TYPE|PATH
 
     Controls the module stub used to generate the initial `.pm.in` source
@@ -1186,6 +1230,10 @@ would be visible in shell history and process listings._
 
     Override the author name used in the module stub and `buildspec.yml`.
     Defaults to `user.name` from your global git config.
+
+- `--vars-file`
+
+    The path to the file that contains template variable values.
 
 # THE REVIEW WORKFLOW
 
@@ -2383,7 +2431,7 @@ tools.
 
 # VERSION
 
-This documentation refers to version 2.2.3
+This documentation refers to version 2.3.0
 
 # AUTHOR
 

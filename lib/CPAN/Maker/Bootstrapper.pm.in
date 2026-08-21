@@ -9,7 +9,9 @@ use IO::Interactive qw(is_interactive);
 
 use parent qw(CLI::Simple);
 
-our $VERSION = '@PACKAGE_VERSION@';
+our $VERSION   = '@PACKAGE_VERSION@';
+our $GIT_SHA   = '@GIT_SHA@';
+our $GIT_DIRTY = '@GIT_DIRTY@';
 
 use Role::Tiny::With;
 with 'CPAN::Maker::Bootstrapper::Role::Init';
@@ -121,11 +123,13 @@ or fails to compile, the build - and therefore C<install> - will fail.
 Disable these gates with environment variables if you want to
 bootstrap first and clean up after:>
 
- make LINT=off SKIP_TESTS=1
+  make LINT=off SYNTAX_CHECKING=off SKIP_TESTS=1
 
-I<C<LINT> is interpreted by the build system installed by this
-module; C<SKIP_TESTS> is interpreted by L<CPAN::Maker> to skip
-running the test suite when building the distribution tarball.>
+I<C<LINT> disables perltidy and perlcritic; C<SYNTAX_CHECKING>
+disables the C<perl -wc> check -- both are interpreted by the build
+system installed by this module. C<SKIP_TESTS> is interpreted by
+L<CPAN::Maker> to skip running the test suite when building the
+distribution tarball.>
 
 B<Have an existing project?>
 
@@ -897,6 +901,40 @@ with the C<PERLCRITIC_THEME>, C<PERLCRITIC_SEVERITY>, and
 C<PERLCRITICRC> environment variables. Requires L<Perl::Critic> to be
 installed.
 
+=item resolve-vars
+
+ cmb resolve-vars [--vars-file FILE] [--no-strict] source-file
+
+Filters C<source-file> to STDOUT, substituting C<@TOKEN@> placeholders
+with values drawn from the environment (or from a C<--vars-file>). This
+is the mechanism the generated F<Makefile> uses to turn F<.pm.in> and
+F<.pl.in> sources into their built C<.pm>/C<.pl> counterparts -- for
+example filling C<@PACKAGE_VERSION@> from the F<VERSION> file or
+C<@BUILD_DATE@> at build time.
+
+A placeholder is only I<required> to resolve if it appears in live code.
+Placeholders that occur solely inside POD or C<#> comments are treated as
+references, not substitutions: they never trigger a "no value present"
+error and are left untouched when no value is available. This lets you
+document a token in your POD (e.g. mention C<@BUILD_DATE@> in a
+description) without breaking the build.
+
+For placeholders that I<do> appear in code, behavior depends on
+C<--strict> (the default):
+
+=over 4
+
+=item * B<strict> (default) - a placeholder in code with no value is a
+fatal error; the build stops.
+
+=item * B<--no-strict> - a placeholder in code with no value produces a
+warning and is left in place literally (as C<@TOKEN@>) rather than being
+substituted to an empty string.
+
+=back
+
+See L</--vars-file> and L</--strict, --no-strict>.
+
 =back
 
 =head2 LLM Commands
@@ -1201,6 +1239,19 @@ Currently takes only a single value: 'github' that indicates that the
 resources section of F<Makefile.PL> should be populated with GitHub
 URL references. Future versions may support additional providers.
 
+=item C<--strict>, C<--no-strict>
+
+Controls how C<resolve-vars> treats an C<@TOKEN@> placeholder that
+appears in code but has no value in the environment or C<--vars-file>.
+C<--strict> (the default) makes this a fatal error. C<--no-strict>
+downgrades it to a warning and leaves the placeholder literal in the
+output.
+
+This affects code placeholders only. Placeholders that appear solely in
+POD or C<#> comments are always ignored by the missing-value check
+regardless of this flag, so C<--no-strict> is not needed merely to
+document a token.
+
 =item C<--stub|-s> TYPE|PATH
 
 Controls the module stub used to generate the initial C<.pm.in> source
@@ -1229,6 +1280,10 @@ When specifying a stub you cannot use the C<--import> option.
 
 Override the author name used in the module stub and C<buildspec.yml>.
 Defaults to C<user.name> from your global git config.
+
+=item C<--vars-file>
+
+The path to the file that contains template variable values.
 
 =back
 

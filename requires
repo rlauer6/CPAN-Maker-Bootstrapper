@@ -1,7 +1,8 @@
 +Log::Log4perl 0
-CLI::Simple 2.2.1
-CLI::Simple::Constants 2.2.1
-CLI::Simple::Utils 2.2.1
++CPAN::Maker 2.0.9
+CLI::Simple 2.2.2
+CLI::Simple::Constants 2.2.2
+CLI::Simple::Utils 2.2.2
 Class::Accessor::Fast 0.51
 Config::Tiny 2.30
 Email::Valid 1.204
