@@ -17,6 +17,7 @@ commands:
   update-annotations: CPAN::Maker::Bootstrapper::Role::LLM::Annotator
   extra-files:        CPAN::Maker::Bootstrapper::Role::ExtraFiles
   resolve-vars:       CPAN::Maker::Bootstrapper::Role::ResolveVars
+  version:            CPAN::Maker::Bootstrapper::Role::Version
 options:
 - auto-annotate|A
 - annotate|a=s@

@@ -1,5 +1,5 @@
-+Log::Log4perl 0
 +CPAN::Maker 2.0.9
++Log::Log4perl 0
 CLI::Simple 2.2.2
 CLI::Simple::Constants 2.2.2
 CLI::Simple::Utils 2.2.2

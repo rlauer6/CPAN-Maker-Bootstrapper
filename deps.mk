@@ -30,3 +30,7 @@
 ./lib/CPAN/Maker/Bootstrapper/Role/LLM/Utils.pm: \
     ./lib/CPAN/Maker/Bootstrapper/Constants.pm
 
+# ./lib/CPAN/Maker/Bootstrapper/Role/Version.pm.in
+./lib/CPAN/Maker/Bootstrapper/Role/Version.pm: \
+    ./lib/CPAN/Maker/Bootstrapper/Constants.pm
+

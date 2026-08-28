@@ -1,3 +1,15 @@
+Fri Aug 28 13:17:15 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.3.1]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.3.1.md: new
+	* VERSION: bump
+	* README.md: generated
+	* cpan-maker-bootstrapper.yml: + version commands
+	* lib/CPAN/Maker/Bootstrapper/Role/Filter.pm.in: skip blank records
+	* lib/CPAN/Maker/Bootstrapper/Role/Version.pm.in: new
+	* deps.mk: generated
+
 Thu Aug 20 14:57:26 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.3.0]:
