@@ -3,19 +3,24 @@ package CPAN::Maker::Bootstrapper;
 use strict;
 use warnings;
 
-use CLI::Simple qw(:roles);
+use CLI::Simple ();
 use CLI::Simple::Constants qw(:booleans);
 use IO::Interactive qw(is_interactive);
 
-use parent qw(CLI::Simple);
+use Role::Tiny::With;
+
+with 'CPAN::Maker::Role::ModuleUtils';
+
+CLI::Simple->import(qw(:roles));
 
 our $VERSION   = '@PACKAGE_VERSION@';
 our $GIT_SHA   = '@GIT_SHA@';
 our $GIT_DIRTY = '@GIT_DIRTY@';
 
-use Role::Tiny::With;
 with 'CPAN::Maker::Bootstrapper::Role::Init';
 with 'CPAN::Maker::Bootstrapper::Role::LLM::Utils';
+
+use parent qw(CLI::Simple);
 
 __PACKAGE__->use_log4perl( level => 'info', color => $TRUE, info_color => 'white' );
 
@@ -354,6 +359,40 @@ several directories in a single operation:
     --import /path/to/roles \
     --import /path/to/bin \
     --installdir .
+
+=head2 Determining the Primary Module
+
+The bootstrapper determines the primary module name in the following
+order:
+
+=over 4
+
+=item 1. C<--module>
+
+If C<--module> is supplied, that value is used.
+
+=item 2. Custom stub
+
+If no module name was supplied and C<--stub> names a file, the first
+package found in that file is used.
+
+=item 3. Installation directory
+
+If the module name is still unknown, the bootstrapper derives it from
+the installation directory name. Hyphens are converted to C<::>, so a
+directory named F<Foo-Bar> implies C<Foo::Bar>.
+
+When C<--installdir> is not supplied, the current project directory is
+used by the normal installation-directory logic.
+
+=back
+
+The resulting name must be a valid Perl module name.
+
+When importing an existing project, the corresponding module file must
+also exist beneath one of the import paths. For example, C<Foo::Bar>
+must be found as F<Foo/Bar.pm> somewhere beneath one of the directories
+supplied with C<--import>.
 
 =head2 What Gets Imported
 
@@ -1145,17 +1184,22 @@ Example:
 
  cmb --module Foo::Bar -I ~/foo-bar/lib -I ~/foo-bar/bin
 
-When using the C<--import> option, you must use the C<--module> option
-to specify the primary module name of the distribution. The importer
-cannot infer the module name from the imported files alone.
+=over 8
 
-I<Note: The F<Makefile> will automatically attempt to substitute the
-token C<E<64>PACKAGE_VERSIONE<64>> inside your C<.pl.in> or C<.pm.in> files with
-the current semantic version in the F<VERSION> file. If you want to
-use that for versioning your scripts and modules add the token as
-shown below:>
+=item * The primary module must be determinable from either the current
+directory name or supplied using the C<--module> option. The
+corresponding module file must exist beneath one of the import paths.
+For example, C<Foo::Bar> must be found as F<Foo/Bar.pm>.
 
-C<our $VERSION = 'E<64>PACKAGE_VERSIONE<64>;'>
+=item * The F<Makefile> will automatically attempt to substitute the
+token C<E<64>PACKAGE_VERSIONE<64>> inside your C<.pl.in> or C<.pm.in>
+files with the current semantic version in the F<VERSION> file. If you
+want to use that for versioning your scripts and modules add the token
+as shown below:
+
+ C<our $VERSION = 'E<64>PACKAGE_VERSIONE<64>';>
+
+=back
 
 =item C<--installdir|-i> DIR
 
@@ -1204,7 +1248,7 @@ will almost never get a clean run when asking for a POD review. When
 your POD is complete, accurate and usable it's good enough. Avoid
 shaving the yak!>
 
-=item C<--module|-m> MODULE (required)
+=item C<--module|-m> MODULE
 
 The Perl module name for the new project, e.g. C<My::New::Module>.
 Used to derive the project directory name, source file path, and

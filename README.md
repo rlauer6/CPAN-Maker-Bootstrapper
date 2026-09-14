@@ -11,6 +11,7 @@
   * [Perl Quality Tools](#perl-quality-tools)
   * [A GNU Make Tutorial in Disguise](#a-gnu-make-tutorial-in-disguise)
 * [IMPORTING FILES](#importing-files)
+  * [Determining the Primary Module](#determining-the-primary-module)
   * [What Gets Imported](#what-gets-imported)
   * [Module Name Requirement](#module-name-requirement)
   * [The Build After Import](#the-build-after-import)
@@ -375,6 +376,36 @@ several directories in a single operation:
       --import /path/to/roles \
       --import /path/to/bin \
       --installdir .
+
+## Determining the Primary Module
+
+The bootstrapper determines the primary module name in the following
+order:
+
+- 1. `--module`
+
+    If `--module` is supplied, that value is used.
+
+- 2. Custom stub
+
+    If no module name was supplied and `--stub` names a file, the first
+    package found in that file is used.
+
+- 3. Installation directory
+
+    If the module name is still unknown, the bootstrapper derives it from
+    the installation directory name. Hyphens are converted to `::`, so a
+    directory named `Foo-Bar` implies `Foo::Bar`.
+
+    When `--installdir` is not supplied, the current project directory is
+    used by the normal installation-directory logic.
+
+The resulting name must be a valid Perl module name.
+
+When importing an existing project, the corresponding module file must
+also exist beneath one of the import paths. For example, `Foo::Bar`
+must be found as `Foo/Bar.pm` somewhere beneath one of the directories
+supplied with `--import`.
 
 ## What Gets Imported
 
@@ -878,7 +909,7 @@ If you want a different `README.md` generated create a
     with values drawn from the environment (or from a `--vars-file`). This
     is the mechanism the generated `Makefile` uses to turn `.pm.in` and
     `.pl.in` sources into their built `.pm`/`.pl` counterparts -- for
-    example filling `2.3.1` from the `VERSION` file or
+    example filling `2.3.2` from the `VERSION` file or
     `@BUILD_DATE@` at build time.
 
     A placeholder is only _required_ to resolve if it appears in live code.
@@ -1101,17 +1132,17 @@ would be visible in shell history and process listings._
 
         cmb --module Foo::Bar -I ~/foo-bar/lib -I ~/foo-bar/bin
 
-    When using the `--import` option, you must use the `--module` option
-    to specify the primary module name of the distribution. The importer
-    cannot infer the module name from the imported files alone.
+    - The primary module must be determinable from either the current
+    directory name or supplied using the `--module` option. The
+    corresponding module file must exist beneath one of the import paths.
+    For example, `Foo::Bar` must be found as `Foo/Bar.pm`.
+    - The `Makefile` will automatically attempt to substitute the
+    token `@PACKAGE_VERSION@` inside your `.pl.in` or `.pm.in`
+    files with the current semantic version in the `VERSION` file. If you
+    want to use that for versioning your scripts and modules add the token
+    as shown below:
 
-    _Note: The `Makefile` will automatically attempt to substitute the
-    token `@PACKAGE_VERSION@` inside your `.pl.in` or `.pm.in` files with
-    the current semantic version in the `VERSION` file. If you want to
-    use that for versioning your scripts and modules add the token as
-    shown below:_
-
-    `our $VERSION = '@PACKAGE_VERSION@;'`
+            C<our $VERSION = 'E<64>PACKAGE_VERSIONE<64>';>
 
 - `--installdir|-i` DIR
 
@@ -1160,7 +1191,7 @@ would be visible in shell history and process listings._
     your POD is complete, accurate and usable it's good enough. Avoid
     shaving the yak!_
 
-- `--module|-m` MODULE (required)
+- `--module|-m` MODULE
 
     The Perl module name for the new project, e.g. `My::New::Module`.
     Used to derive the project directory name, source file path, and
@@ -2431,7 +2462,7 @@ tools.
 
 # VERSION
 
-This documentation refers to version 2.3.1
+This documentation refers to version 2.3.2
 
 # AUTHOR
 
