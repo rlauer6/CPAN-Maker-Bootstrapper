@@ -27,6 +27,7 @@ extra-files:
     - .includes/help.mk
     - .includes/local.mk
     - .includes/perl.mk
+    - .includes/bootstrap.mk
     - .includes/release-notes.mk
     - .includes/update.mk
     - .includes/upgrade.mk
