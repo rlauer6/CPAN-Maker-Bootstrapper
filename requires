@@ -1,8 +1,10 @@
-+CPAN::Maker 2.0.9
++CPAN::Maker 2.0.11
 +Log::Log4perl 0
 CLI::Simple 2.2.2
 CLI::Simple::Constants 2.2.2
 CLI::Simple::Utils 2.2.2
+CPAN::Maker::Role::ModuleUtils 2.0.10
+CPAN::Maker::Role::Provides 0
 Class::Accessor::Fast 0.51
 Config::Tiny 2.30
 Email::Valid 1.204

@@ -10,5 +10,5 @@ cmb_md5sums.txt: Makefile $(MK_FILES)
 
 .PHONY: install
 install: $(TARBALL)
-	cpanm -n -v -l $(HOME) $<
+	cpm install -L $(HOME) --resolver 02packages,https://cpan.openbedrock.net/orepan2 $<
 

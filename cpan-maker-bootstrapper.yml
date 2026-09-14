@@ -13,6 +13,7 @@ commands:
   models:             CPAN::Maker::Bootstrapper::Role::LLM::Models
   pod-finding:        CPAN::Maker::Bootstrapper::Role::LLM::Reviewer
   pod-review:         CPAN::Maker::Bootstrapper::Role::LLM::Reviewer
+  provides:           CPAN::Maker::Bootstrapper::Role::Provides
   release-notes:      CPAN::Maker::Bootstrapper::Role::LLM::ReleaseNotes
   update-annotations: CPAN::Maker::Bootstrapper::Role::LLM::Annotator
   extra-files:        CPAN::Maker::Bootstrapper::Role::ExtraFiles

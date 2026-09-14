@@ -1,7 +1,9 @@
 requires "CLI::Simple", "2.2.2";
 requires "CLI::Simple::Constants", "2.2.2";
 requires "CLI::Simple::Utils", "2.2.2";
-requires "CPAN::Maker", "2.0.9";
+requires "CPAN::Maker", "2.0.11";
+requires "CPAN::Maker::Role::ModuleUtils", "2.0.10";
+requires "CPAN::Maker::Role::Provides", "0";
 requires "Class::Accessor::Fast", "0.51";
 requires "Config::Tiny", "2.30";
 requires "Email::Valid", "1.204";
