@@ -17,11 +17,13 @@ extra-files:
   - ChangeLog
   - release-notes.md
   - share:
+    - MANIFEST
     - README.md
-    - Makefile.txt
-    - buildspec.yml.tmpl
+    - Makefile.txt 
     - builder
+    - cpan-maker-bootstrapper.yml
     - cmb_md5sums.txt
+    - gitignore
     - .github/workflows/build.yml
     - .includes/git.mk
     - .includes/help.mk
@@ -36,13 +38,11 @@ extra-files:
     - .includes/bash-completion.mk
     - .prompts/code-review.prompt
     - .prompts/pod-review.prompt
-    - cli-module.pm.tmpl
-    - class-module.pm.tmpl
-    - test.t.tmpl
-    - gitignore
-    - modulino.tmpl
-    - MANIFEST
-    - cpan-maker-bootstrapper.yml
+    - share/cli-module.pm.tmpl
+    - share/class-module.pm.tmpl
+    - share/test.t.tmpl
+    - share/modulino.tmpl
+    - share/buildspec.yml.tmpl
 man-links:
   - bootstrapper: CPAN::Maker::Bootstrapper
   - cpan-maker-bootstrapper: CPAN::Maker::Bootstrapper

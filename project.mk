@@ -1,8 +1,6 @@
 # inter-module dependencies
 DEPS += cmb_md5sums.txt
 
-CLEANFILES += cmb_md5sums.txt
-
 MK_FILES = $(wildcard .includes/*.mk)
 
 cmb_md5sums.txt: Makefile $(MK_FILES)

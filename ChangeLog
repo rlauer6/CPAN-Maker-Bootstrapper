@@ -1,3 +1,32 @@
+Fri Sep 25 06:16:03 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.3.3]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.3.3.md: new
+	* VERSION: bump
+	* share/buildspec.yml.tmpl: renamed
+	* share/class-module.pm.tmpl: renamed
+	* share/cli-module.pm.tmpl: renamed
+	* share/modulino.tmpl: renamed
+	* share/test.t.tmpl: renamed
+	* buildspec.yml
+	- update extra-files based on above
+	* gitignore: align .gitignore, gitignore
+	* .gitignore
+	- align .gitignore, gitignore
+	- test-requires.scan
+	- identify cmb specific artifacts
+	* .includes/local.mk
+	- depend on cpanfile.runtime (not test deps)
+	- use local/.installed as time
+	* .include/perl.mk
+	(LOCAL_PREREQ): local/.installed
+	* Makefile
+	(cpanfile.runtime): new
+	(test-requires.scan): new
+	(test-requires): reworked to avoid rescans
+	* share/modulino.tmpl: chmod -x
+
 Mon Sep 14 12:32:17 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.3.2]:

@@ -909,7 +909,7 @@ If you want a different `README.md` generated create a
     with values drawn from the environment (or from a `--vars-file`). This
     is the mechanism the generated `Makefile` uses to turn `.pm.in` and
     `.pl.in` sources into their built `.pm`/`.pl` counterparts -- for
-    example filling `2.3.2` from the `VERSION` file or
+    example filling `2.3.3` from the `VERSION` file or
     `@BUILD_DATE@` at build time.
 
     A placeholder is only _required_ to resolve if it appears in live code.
@@ -2462,7 +2462,7 @@ tools.
 
 # VERSION
 
-This documentation refers to version 2.3.2
+This documentation refers to version 2.3.3
 
 # AUTHOR
 
