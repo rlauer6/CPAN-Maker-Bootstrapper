@@ -747,6 +747,12 @@ The target depends on the modulino, so it will build F<bin/E<lt>aliasE<gt>>
 first if needed. Completion is only available for modulinos that
 subclass C<CLI::Simple>.
 
+=item C<make help>
+
+Lists the available build targets and commonly used build variables.
+Project-specific targets in F<project.mk> are included when their
+target definition contains a C<##> description.
+
 =item C<make requires> / C<make test-requires>
 
 Scans source files with C<scandeps-static.pl> and writes the dependency
@@ -772,7 +778,7 @@ source file changes; see L</Dependencies Management>.
 =item C<make package>
 
 Runs the quality and dependency gates together (C<lint> plus a
-dependency scan) â a convenience for pre-release verification.
+dependency scan) - a convenience for pre-release verification.
 
 =item C<make release> / C<make minor> / C<make major>
 
@@ -793,6 +799,32 @@ C<clean-local> target with a double-colon.
 
   clean-local::
          rm -rf workdir
+
+=item C<make test>
+
+Runs the project's distribution unit tests under F<t/>:
+
+ prove -I lib -v t/
+
+Projects may also have tests that exercise development infrastructure,
+external services, generated artifacts, or other behavior that should
+not be included in the CPAN distribution. These tests should remain
+outside F<t/> and can be run by defining C<test-local::> in
+F<project.mk>:
+
+ test-local::
+     prove -I lib -v xt/
+
+or:
+
+ test-local::
+     ./bin/test-integration
+
+C<make test> runs both the distribution tests under F<t/> and any
+project-specific C<test-local::> recipes.
+
+The double-colon form allows F<project.mk> to extend the managed
+C<test-local> target without replacing it.
 
 =item C<make tidy>
 
@@ -907,7 +939,10 @@ Then set C<CPAN_MAKER_CONFIG> to point to it:
 
  cmb extra-files path file ...
 
-Add files to be installed with the distribution. Use '.' for path if the file is to be installed in the root of the distribution tarball but not in the share directory. Use 'share' if the file is to be installed int the distribution share directory.
+Add files to be installed with the distribution. Use '.' for path if
+the file is to be installed in the root of the distribution tarball
+but not in the share directory. Use 'share' if the file is to be
+installed into the distribution share directory.
 
 I<NOTE: file should be the relative path within the project that points to the file.>
 
@@ -915,6 +950,16 @@ Example:
 
  cmb extra-files . README.md
  cmb extra-files share share/config.json 
+
+Entries may be removed by editing F<buildspec.yml> directly, which is
+usually the clearest approach.
+
+The C<cmb extra-files> command also supports removing an entry by
+prefixing the filename with C<->:
+
+ cmb extra-files . -README.md
+
+This is primarily useful from scripts or other automated workflows.
 
 =item create-deps
 
@@ -1811,8 +1856,17 @@ Any target specific to your project - generating assets, running
 linters, deploying, sending notifications:
 
  .PHONY: deploy
- deploy: all
+ deploy: all ## deploy the distribution
      scp $(TARBALL) user@myserver:/opt/cpan
+
+Add C<##> followed by a description to a target definition to include
+the target in the output from C<make help>. Because F<project.mk> is
+included in C<MAKEFILE_LIST>, project-specific targets are discovered
+automatically:
+
+ make help
+
+There is no separate help table to maintain.
 
 =item Inter-module dependencies
 
@@ -1844,7 +1898,16 @@ appending to C<CLEANFILES>:
 =item Extending the C<clean-recipe>
 
   clean-local::
-         rm -rf workd
+         rm -rf workdir
+
+=item Extending the test recipe
+
+Projects may have development or integration tests that should not be
+included in the CPAN distribution. Add them to C<make test> by
+extending C<test-local> with a double-colon rule:
+
+ test-local::
+     prove -I lib -v xt/
 
 =back
 
@@ -1854,8 +1917,10 @@ appending to C<CLEANFILES>:
 
 =item * Modifications to existing targets like C<all>, C<clean>, C<requires>
 
-=item * Changes to C<DEPS>, C<CLEANFILES>, or other core variables - these
-are owned by the managed Makefile
+=item * Replacing managed variables such as C<DEPS> or C<CLEANFILES>.
+
+Use documented extension points such as C<CLEANFILES +=> where
+provided rather than redefining the managed value.
 
 =item * Anything that duplicates logic already in the managed Makefile
 
@@ -2367,6 +2432,24 @@ Edit F<buildspec.yml> and add entries to the C<extra-files> section:
 Files listed under C<share:> are installed into the distribution's
 share directory and can be accessed at runtime via
 L<File::ShareDir>.
+
+The build verifies that files listed in C<extra-files> are tracked by
+git. This helps catch files that have been added to the distribution
+but accidentally omitted from the project repository.
+
+Some extra files are generated build artifacts and therefore B<should
+not be committed> to the repository. Add those files to
+F<extra-files.skip>, one file per line:
+
+ generated/service-data.dat
+ share/generated-index.json
+
+Blank lines and lines beginning with C<#> are ignored.
+
+F<extra-files.skip> only disables the git tracking check for those
+files. The files remain part of the distribution and continue to be
+included as dependencies when determining whether the distribution
+tarball must be rebuilt.
 
 =head2 I want to pin a version or add a module the scanner missed
 

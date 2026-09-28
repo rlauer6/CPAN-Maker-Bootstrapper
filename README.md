@@ -712,6 +712,12 @@ Key Makefile targets:
     first if needed. Completion is only available for modulinos that
     subclass `CLI::Simple`.
 
+- `make help`
+
+    Lists the available build targets and commonly used build variables.
+    Project-specific targets in `project.mk` are included when their
+    target definition contains a `##` description.
+
 - `make requires` / `make test-requires`
 
     Scans source files with `scandeps-static.pl` and writes the dependency
@@ -737,7 +743,7 @@ Key Makefile targets:
 - `make package`
 
     Runs the quality and dependency gates together (`lint` plus a
-    dependency scan) Ã¢ÂÂ a convenience for pre-release verification.
+    dependency scan) - a convenience for pre-release verification.
 
 - `make release` / `make minor` / `make major`
 
@@ -758,6 +764,32 @@ Key Makefile targets:
 
         clean-local::
                rm -rf workdir
+
+- `make test`
+
+    Runs the project's distribution unit tests under `t/`:
+
+        prove -I lib -v t/
+
+    Projects may also have tests that exercise development infrastructure,
+    external services, generated artifacts, or other behavior that should
+    not be included in the CPAN distribution. These tests should remain
+    outside `t/` and can be run by defining `test-local::` in
+    `project.mk`:
+
+        test-local::
+            prove -I lib -v xt/
+
+    or:
+
+        test-local::
+            ./bin/test-integration
+
+    `make test` runs both the distribution tests under `t/` and any
+    project-specific `test-local::` recipes.
+
+    The double-colon form allows `project.mk` to extend the managed
+    `test-local` target without replacing it.
 
 - `make tidy`
 
@@ -868,7 +900,10 @@ If you want a different `README.md` generated create a
 
         cmb extra-files path file ...
 
-    Add files to be installed with the distribution. Use '.' for path if the file is to be installed in the root of the distribution tarball but not in the share directory. Use 'share' if the file is to be installed int the distribution share directory.
+    Add files to be installed with the distribution. Use '.' for path if
+    the file is to be installed in the root of the distribution tarball
+    but not in the share directory. Use 'share' if the file is to be
+    installed into the distribution share directory.
 
     _NOTE: file should be the relative path within the project that points to the file._
 
@@ -876,6 +911,16 @@ If you want a different `README.md` generated create a
 
         cmb extra-files . README.md
         cmb extra-files share share/config.json 
+
+    Entries may be removed by editing `buildspec.yml` directly, which is
+    usually the clearest approach.
+
+    The `cmb extra-files` command also supports removing an entry by
+    prefixing the filename with `-`:
+
+        cmb extra-files . -README.md
+
+    This is primarily useful from scripts or other automated workflows.
 
 - create-deps
 
@@ -909,7 +954,7 @@ If you want a different `README.md` generated create a
     with values drawn from the environment (or from a `--vars-file`). This
     is the mechanism the generated `Makefile` uses to turn `.pm.in` and
     `.pl.in` sources into their built `.pm`/`.pl` counterparts -- for
-    example filling `2.3.3` from the `VERSION` file or
+    example filling `2.3.4` from the `VERSION` file or
     `@BUILD_DATE@` at build time.
 
     A placeholder is only _required_ to resolve if it appears in live code.
@@ -1679,8 +1724,17 @@ the right place for durable, machine- or project-wide build settings such as
     linters, deploying, sending notifications:
 
         .PHONY: deploy
-        deploy: all
+        deploy: all ## deploy the distribution
             scp $(TARBALL) user@myserver:/opt/cpan
+
+    Add `##` followed by a description to a target definition to include
+    the target in the output from `make help`. Because `project.mk` is
+    included in `MAKEFILE_LIST`, project-specific targets are discovered
+    automatically:
+
+        make help
+
+    There is no separate help table to maintain.
 
 - Inter-module dependencies
 
@@ -1712,13 +1766,25 @@ the right place for durable, machine- or project-wide build settings such as
 - Extending the `clean-recipe`
 
         clean-local::
-               rm -rf workd
+               rm -rf workdir
+
+- Extending the test recipe
+
+    Projects may have development or integration tests that should not be
+    included in the CPAN distribution. Add them to `make test` by
+    extending `test-local` with a double-colon rule:
+
+        test-local::
+            prove -I lib -v xt/
 
 ## What does NOT belong in project.mk
 
 - Modifications to existing targets like `all`, `clean`, `requires`
-- Changes to `DEPS`, `CLEANFILES`, or other core variables - these
-are owned by the managed Makefile
+- Replacing managed variables such as `DEPS` or `CLEANFILES`.
+
+    Use documented extension points such as `CLEANFILES +=` where
+    provided rather than redefining the managed value.
+
 - Anything that duplicates logic already in the managed Makefile
 
 ## Custom Template Tokens
@@ -2191,6 +2257,24 @@ Files listed under `share:` are installed into the distribution's
 share directory and can be accessed at runtime via
 [File::ShareDir](https://metacpan.org/pod/File%3A%3AShareDir).
 
+The build verifies that files listed in `extra-files` are tracked by
+git. This helps catch files that have been added to the distribution
+but accidentally omitted from the project repository.
+
+Some extra files are generated build artifacts and therefore **should
+not be committed** to the repository. Add those files to
+`extra-files.skip`, one file per line:
+
+    generated/service-data.dat
+    share/generated-index.json
+
+Blank lines and lines beginning with `#` are ignored.
+
+`extra-files.skip` only disables the git tracking check for those
+files. The files remain part of the distribution and continue to be
+included as dependencies when determining whether the distribution
+tarball must be rebuilt.
+
 ## I want to pin a version or add a module the scanner missed
 
 Edit `requires` directly. Prefix the module name with `+` to make
@@ -2462,7 +2546,7 @@ tools.
 
 # VERSION
 
-This documentation refers to version 2.3.3
+This documentation refers to version 2.3.4
 
 # AUTHOR
 

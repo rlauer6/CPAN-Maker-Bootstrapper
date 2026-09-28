@@ -266,7 +266,10 @@ test-requires.scan: $(TESTS)
 	rm -f file_list.tmp
 
 test-requires.raw: test-requires.scan provides
-	$(NO_ECHO)comm -23 test-requires.scan provides > $@
+	$(NO_ECHO)test_requires_tmp=$$(mktemp); \
+	trap 'rm -f $$test_requires_tmp' EXIT; \
+	sed -e 's/ 0$$/ undef/g' $< > $$test_requires_tmp; \
+	comm -23 $$test_requires_tmp provides > $@
 
 # shared by requires, recommends, suggests, and test-requires: reconciles
 # a fresh scan (%.raw) against history (skip list + previous run), via
@@ -408,7 +411,10 @@ build-ci:
 
 GSOURCE_FILES = $(SOURCE_FILES:.in=)
 
-test: $(GSOURCE_FILES) ## run unit tests
+.PHONY: test-local
+test-local::
+
+test: $(GSOURCE_FILES) test-local ## run unit tests
 	prove -I lib -v t/
 
 check: $(GSOURCE_FILES) ## syntax check and create source from .in file
@@ -440,9 +446,16 @@ package: clean ## run lint & scan
 
 extra-files: buildspec.yml
 	$(NO_ECHO)$(BOOTSTRAPPER) extra-files > $@.tmp; \
+	if test -f extra-files.skip; then \
+	  awk '!/^[[:space:]]*(#|$$)/ { print $$1 }' extra-files.skip > $@.skip.tmp; \
+	else \
+	  : > $@.skip.tmp; \
+	fi; \
 	for a in $$(awk '{print $$1}' $@.tmp); do \
+	  grep -Fqx -- "$$a" $@.skip.tmp && continue; \
 	  git ls-files --error-unmatch -- "$$a" >/dev/null; \
 	done; \
+	rm -f $@.skip.tmp; \
 	mv $@.tmp $@
 
 extra-files.mk: extra-files

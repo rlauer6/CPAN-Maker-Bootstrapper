@@ -1,3 +1,19 @@
+Mon Sep 28 04:49:20 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.3.4]:
+	* release-notes.md: updated
+	* release-notes/release-notes-2.3.4.md: new
+	* README.md: generated
+	* Makefile
+	(test-local): new
+	(test): add test-local as dependency
+	(extra-files)
+	- stop overwriting extra-files.skip
+	(test-requires): normlize scan
+	* VERSION: bump
+	* lib/CPAN/Maker/Bootstrapper.pm.in: POD updates
+	* cmb_md5sums.txt: generated
+
 Fri Sep 25 06:16:03 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.3.3]:
