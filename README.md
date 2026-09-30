@@ -655,13 +655,14 @@ all `.mk` files installed and maintained by the bootstrapper. These
 files are write-protected and should never be edited directly. Updated
 by `make update`.
 
-        .includes/perl.mk         - pattern rules, syntax checking, tidy, critic
-        .includes/git.mk          - make git target
-        .includes/help.mk         - make help target
-        .includes/version.mk      - make release/minor/major targets
+        .includes/perl.mk          - pattern rules, syntax checking, tidy, critic
+        .includes/git.mk           - make git target
+        .includes/help.mk          - make help target
+        .includes/publish.mk       - publish to CPAN
         .includes/release-notes.mk - make release-notes target
-        .includes/update.mk       - make update target
-        .includes/upgrade.mk      - make upgrade/check-upgrade targets
+        .includes/update.mk        - make update target
+        .includes/upgrade.mk       - make upgrade/check-upgrade targets
+        .includes/version.mk       - make release/minor/major targets
 
 - `project.mk` - your extension point for custom make rules,
 inter-module dependencies, and project-specific variables. Never
@@ -740,10 +741,60 @@ Key Makefile targets:
     sections of the generated `Makefile.PL`. Each is regenerated when a
     source file changes; see ["Dependencies Management"](#dependencies-management).
 
+- `DARKPAN_REQUIRES`
+
+    Set `DARKPAN_REQUIRES` to a true value (`1`, `yes`, `on`, or
+    `si`) to generate dependency manifests for modules available from a
+    configured DarkPAN.
+
+    This is useful when a distribution published to CPAN has one or more runtime
+    dependencies that are intentionally hosted on a separate CPAN-compatible
+    repository. CPAN metadata can still declare those dependencies normally, but
+    standard installers need additional information to locate distributions that
+    should be obtained from the DarkPAN.
+
+    The generated DarkPAN manifests provide that information without duplicating
+    the dependency declarations maintained in `requires`. They are included in
+    the distribution as installation aids for the person or process installing
+    the module. They are not automatically consulted by Perl installers during a
+    normal installation; the installer must explicitly use the appropriate
+    manifest or configure the DarkPAN repository.
+
+    When enabled, `DARKPAN_URL` must specify the base URL of the
+    CPAN-compatible repository:
+
+        DARKPAN_REQUIRES = yes
+        DARKPAN_URL = https://cpan.example.com/repository
+
+    `make` examines `requires` and generates:
+
+        cpanfile.darkpan
+        cpanm.darkpan
+
+    `cpanfile.darkpan` contains the non-CPAN dependencies in cpanfile
+    syntax. `cpanm.darkpan` contains the same dependencies in a form
+    suitable for passing to [cpanm](https://metacpan.org/pod/App%3A%3Acpanminus).
+
+    The configured DarkPAN must publish:
+
+        modules/02packages.details.txt.gz
+
+    under `DARKPAN_URL`.
+
 - `make package`
 
     Runs the quality and dependency gates together (`lint` plus a
     dependency scan) - a convenience for pre-release verification.
+
+- `TARBALL_ORDER_ONLY_PREREQS`
+
+    Additional order-only prerequisites for the distribution tarball.
+
+    Set this in `project.mk` when project-specific generated artifacts or
+    other preparation steps must complete before the tarball is built but
+    should not themselves determine whether the tarball is out of date.
+
+        TARBALL_ORDER_ONLY_PREREQS += prepare-assets
 
 - `make release` / `make minor` / `make major`
 
@@ -896,9 +947,24 @@ If you want a different `README.md` generated create a
 
         export CPAN_MAKER_CONFIG=$HOME/.cpan-makerrc
 
+- deps-filter
+
+        cmb deps-filter requires
+
+    Filters a dependency list so that modules already provided by another
+    listed distribution are removed.
+
+    The command consults the public CPAN package index and any repositories
+    listed in `build-mirrors`. Repository indexes are cached under the
+    user's cache directory and conditionally refreshed on subsequent runs.
+
+    This command is normally invoked automatically by the generated
+    Makefile for `requires`, `recommends`, `suggests`, and
+    `test-requires`.
+
 - extra-files
 
-        cmb extra-files path file ...
+        cmb extra-files path file1 file2 ...
 
     Add files to be installed with the distribution. Use '.' for path if
     the file is to be installed in the root of the distribution tarball
@@ -935,6 +1001,50 @@ If you want a different `README.md` generated create a
     depends on changes. With no arguments every project module is scanned;
     name one or more modules to restrict the output.
 
+- create-darkpan-requires
+
+        cmb create-darkpan-requires
+
+    Examines `requires` and identifies dependencies available from the configured
+    DarkPAN. If a dependency is available from both CPAN and the DarkPAN, the
+    DarkPAN is preferred.
+
+    The generated files are intended as installation aids and are included with
+    the distribution. They do not alter normal Perl dependency resolution by
+    themselves and are not automatically consulted during installation. Instead,
+    they are intended to be consumed explicitly by your installation tool, such
+    as `cpm` or `cpanm`.
+
+    For distributions that include these files, the `cpan-distfile` utility
+    provided with [DarkPAN::Resolver::SQLite](https://metacpan.org/pod/DarkPAN%3A%3AResolver%3A%3ASQLite) can be used to retrieve them
+    directly from a CPAN distribution without manually downloading and unpacking
+    the tarball.
+
+        cpan-distfile Some::Module cpanm.darkpan > cpanm.darkpan
+
+    See [DarkPAN::Resolver::SQLite](https://metacpan.org/pod/DarkPAN%3A%3AResolver%3A%3ASQLite) for examples of using these manifests with
+    `cpm` and `cpanm`.
+
+    The command generates two representations of those dependencies:
+
+        cpanfile.darkpan
+        cpanm.darkpan
+
+    `cpanfile.darkpan` uses cpanfile syntax:
+
+        requires 'Amazon::API::CloudWatchLogs', '1.43.90';
+
+    `cpanm.darkpan` contains one cpanm module requirement per line:
+
+        Amazon::API::CloudWatchLogs~1.43.90
+
+    The version constraints are taken from `requires`; the DarkPAN index
+    is used only to determine whether a module is available from a DarkPAN
+    repository.
+
+    This command is normally invoked automatically by `make` when
+    `DARKPAN_REQUIRES` is enabled.
+
 - critique
 
         cmb critique file ...
@@ -946,6 +1056,17 @@ If you want a different `README.md` generated create a
     `PERLCRITICRC` environment variables. Requires [Perl::Critic](https://metacpan.org/pod/Perl%3A%3ACritic) to be
     installed.
 
+- publish-to-cpan
+
+        cmb publish-to-cpan distribution.tar.gz [username [password]]
+
+    Uploads a distribution tarball to PAUSE.
+
+    The username and password may be supplied as arguments or through
+    `PAUSE_USER` and `PAUSE_PASSWORD`. Normally this command is invoked
+    through `make publish`, which rebuilds and tests the distribution
+    before uploading it.
+
 - resolve-vars
 
         cmb resolve-vars [--vars-file FILE] [--no-strict] source-file
@@ -954,7 +1075,7 @@ If you want a different `README.md` generated create a
     with values drawn from the environment (or from a `--vars-file`). This
     is the mechanism the generated `Makefile` uses to turn `.pm.in` and
     `.pl.in` sources into their built `.pm`/`.pl` counterparts -- for
-    example filling `2.3.4` from the `VERSION` file or
+    example filling `2.3.5` from the `VERSION` file or
     `@BUILD_DATE@` at build time.
 
     A placeholder is only _required_ to resolve if it appears in live code.
@@ -1827,6 +1948,16 @@ The following targets manage the lifecycle of the build system itself:
     Checks MetaCPAN to see if a newer version of
     `CPAN::Maker::Bootstrapper` is available.
 
+- `make publish`
+
+    Builds the distribution tarball, unpacks it into a temporary directory,
+    runs its normal `Makefile.PL`, build, and test sequence, and uploads
+    the tarball to PAUSE if all checks succeed.
+
+    Set the PAUSE credentials with:
+
+        make publish PAUSE_USER=username PAUSE_PASSWORD=password
+
 - `make upgrade`
 
     Checks MetaCPAN, installs the latest version via `cpanm`, then
@@ -2275,6 +2406,13 @@ files. The files remain part of the distribution and continue to be
 included as dependencies when determining whether the distribution
 tarball must be rebuilt.
 
+`CPAN::Maker::Bootstrapper` uses this mechanism for generated DarkPAN
+dependency manifests. When `DARKPAN_REQUIRES` is enabled,
+`cpanfile.darkpan` and `cpanm.darkpan` are added to
+`buildspec.yml` as extra files and to `extra-files.skip` because
+they are generated during the build rather than maintained in source
+control. See ["DARKPAN\_REQUIRES"](#darkpan_requires).
+
 ## I want to pin a version or add a module the scanner missed
 
 Edit `requires` directly. Prefix the module name with `+` to make
@@ -2518,21 +2656,28 @@ tools.
 
 # DEPENDENCIES
 
-    CLI::Simple::Constants
-    CLI::Simple::Utils
-    CPAN::Maker::ConfigReader
-    Cwd
-    English
+    CLI::Simple
+    CPAN::Maker
+    Class::Accessor::Fast
+    Config::Tiny
     Email::Valid
-    File::Basename
-    File::Copy
-    File::Find
-    File::Path
+    File::Copy::Recursive
+    File::HomeDir
     File::ShareDir
-    File::Temp
-    JSON::PP
-    List::Util
-    Module::Metadata;
+    HTTP::Tiny
+    IO::Interactive
+    IO::Scalar
+    IO::Socket::SSL
+    JSON
+    Log::Log4perl
+    Module::Metadata
+    Module::ScanDeps::Static
+    Net::SSLeay
+    Pod::Extract
+    Readonly
+    Role::Tiny
+    Text::ASCIITable
+    YAML::Tiny
 
 ## Required for AI Commands
 
@@ -2546,7 +2691,7 @@ tools.
 
 # VERSION
 
-This documentation refers to version 2.3.4
+This documentation refers to version 2.3.5
 
 # AUTHOR
 

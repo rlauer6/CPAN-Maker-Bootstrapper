@@ -1,5 +1,5 @@
 # inter-module dependencies
-DEPS += cmb_md5sums.txt
+DEPS += cmb_md5sums.txt MANIFEST
 
 MK_FILES = $(wildcard .includes/*.mk)
 

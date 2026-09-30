@@ -26,10 +26,21 @@ MODULE_PATH = lib/$(shell echo $(MODULE_NAME) | perl -npe 's/::/\//g;').pm
 
 PROJECT_NAME ?= $(shell echo $(MODULE_NAME) | sed -e 's/::/-/g;')
 
+DARKPAN_REQUIRES ?=
+DARKPAN_URL ?=
+
+ifneq ($(filter 1 yes on si,$(DARKPAN_REQUIRES)),)
+DARKPAN_REQUIRES_ENABLED := 1
+endif
+
+export DARKPAN_URL
+
 LOG_LEVEL ?= info
 
 NO_ECHO ?= @
 NO_COLOR ?=
+
+TARBALL_ORDER_ONLY_PREREQS ?=
 
 UNIT_TEST_NAME = $(shell TEST_NAME=$(PROJECT_NAME) perl -e 'printf q{t/00-%s.t}, lc $$ENV{TEST_NAME}')
 
@@ -177,7 +188,26 @@ cpanfile: cpanfile.requires cpanfile.suggests cpanfile.recommends
 	  cat $$a >>$@; \
 	done
 
-$(TARBALL): $(DEPS) | update-available \
+ifeq ($(DARKPAN_REQUIRES_ENABLED),1)
+
+ifeq ($(strip $(DARKPAN_URL)),)
+$(error DARKPAN_URL must be set when DARKPAN_REQUIRES is enabled)
+endif
+
+DEPS += cpanfile.darkpan cpanm.darkpan
+
+cpanfile.darkpan cpanm.darkpan: requires
+	$(NO_ECHO)$(BOOTSTRAPPER) create-darkpan-requires; \
+	$(BOOTSTRAPPER) extra-files . cpanfile.darkpan cpanm.darkpan; \
+	extra_files_skip=$$(mktemp); trap 'rm -f $$extra_files_skip' EXIT; \
+	touch extra-files.skip; \
+	cp extra-files.skip "$$extra_files_skip"; \
+	printf "%s\n" cpanfile.darkpan cpanm.darkpan >>"$$extra_files_skip"; \
+	sort -u "$$extra_files_skip" > extra-files.skip
+
+endif
+
+$(TARBALL): $(DEPS) | update-available $(TARBALL_ORDER_ONLY_PREREQS) \
     $(if $(tidy_on), $(PERL_MODULES:%=%.tdy) $(PERL_BIN_FILES:%=%.tdy)) \
     $(if $(critic_on), $(PERL_MODULES:%=%.crit) $(PERL_BIN_FILES:%=%.crit))
 	$(NO_ECHO)if [[ -z "$(NO_COLOR)" ]]; then \
@@ -265,11 +295,24 @@ test-requires.scan: $(TESTS)
 	perl -npe 'while(s/  / /g) {}' < $$tmp | sort > $@; \
 	rm -f file_list.tmp
 
-test-requires.raw: test-requires.scan provides
-	$(NO_ECHO)test_requires_tmp=$$(mktemp); \
-	trap 'rm -f $$test_requires_tmp' EXIT; \
-	sed -e 's/ 0$$/ undef/g' $< > $$test_requires_tmp; \
-	comm -23 $$test_requires_tmp provides > $@
+test-requires.raw: test-requires.scan
+	$(NO_ECHO)sed -e 's/ 0$$/ undef/g' $< > $@
+
+test-requires: test-requires.raw provides
+	$(NO_ECHO)cleanfiles="$@.xxx"; \
+	reconciled=$$(mktemp); \
+	filtered=$$(mktemp); \
+	trap 'rm -f $$cleanfiles $$reconciled $$filtered' EXIT; \
+	scan="$(SCAN)"; \
+	if [[ "$${scan^^}" = "ON" ]]; then \
+	  if test -e "$@"; then \
+	    cp "$@" "$@.xxx"; \
+	  fi; \
+	  $(BOOTSTRAPPER) filter "$<" "$@.skip" "$@.xxx" > "$$reconciled"; \
+	  $(BOOTSTRAPPER) deps-filter "$$reconciled" > "$$filtered"; \
+	  awk 'NR == FNR { provided[$$1] = 1; next } !provided[$$1]' \
+	    provides "$$filtered" > "$@"; \
+	fi
 
 # shared by requires, recommends, suggests, and test-requires: reconciles
 # a fresh scan (%.raw) against history (skip list + previous run), via
@@ -278,13 +321,15 @@ test-requires.raw: test-requires.scan provides
 # untouched (whatever's already on disk, or nothing on a fresh checkout).
 %: %.raw
 	$(NO_ECHO)cleanfiles="$@.xxx"; \
-	trap 'rm -f $$cleanfiles' EXIT; \
+	reconciled=$$(mktemp); \
+	trap 'rm -f $$cleanfiles $$reconciled' EXIT; \
 	scan="$(SCAN)"; \
 	if [[ "$${scan^^}" = "ON" ]]; then \
 	  if test -e "$@"; then \
 	    cp "$@" "$@.xxx"; \
 	  fi; \
-	  cmb filter "$<" "$@.skip" "$@.xxx" > $@; \
+	  $(BOOTSTRAPPER) filter "$<" "$@.skip" "$@.xxx" > "$$reconciled"; \
+	  $(BOOTSTRAPPER) deps-filter "$$reconciled" > "$@"; \
 	fi
 
 requires: $(SOURCE_FILES_IN) ## creates or updates the `requires` file used to populate PREQ_PM section of the Makefile.PL
@@ -348,7 +393,8 @@ CLEANFILES += \
     extra-files.mk \
     module.pm.tmpl \
     release-*.{lst,diffs} \
-    cpanfile.*
+    cpanfile.* \
+    *.darkpan
 
 .PHONY: clean-local
 clean-local::
@@ -465,3 +511,5 @@ extra-files.mk: extra-files
 ifeq ($(BOOTSTRAP_BUILD),)
 include extra-files.mk
 endif
+
+include .includes/publish.mk
