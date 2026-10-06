@@ -34,3 +34,5 @@ bin/bootstrapper
 bin/cmb
 bin/cpan-maker-bootstrapper
 cmb_md5sums.txt
+deps.mk
+*.reconciled
