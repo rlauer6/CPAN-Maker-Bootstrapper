@@ -1,4 +1,5 @@
 Git::Raw 0.90
 LLM::API 1.0.1
 Perl::Critic 1.156
+Perl::Tidy 20260204
 Term::ANSI::Color 

@@ -14,9 +14,10 @@
 *-review-2*.annotate
 *-review-2*.code
 *-review-2*.pod
-*.diffs
-*.lst
-*.gz
+release-*.diffs
+release-*.lst
+release-*.status
+release-*.gz
 buildspec.yml.current
 buildspec.yml.tmpl
 cpanfile.*
@@ -36,3 +37,7 @@ bin/cpan-maker-bootstrapper
 cmb_md5sums.txt
 deps.mk
 *.reconciled
+*.rendered
+build-config.mk
+config.mk
+config.ini

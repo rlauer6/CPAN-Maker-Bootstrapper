@@ -1,0 +1,159 @@
+You are generating a release ChangeLog entry for a Perl distribution.
+
+You will be given some or all of the following release artifacts:
+
+- `release-X.Y.Z.status` - source-control status for the release; authoritative for identifying added, modified, renamed, and deleted files
+- `release-X.Y.Z.diffs` - source diff from the previous release; authoritative for understanding implementation changes
+- `release-X.Y.Z.lst` - release file inventory/comparison information
+- `release-X.Y.Z.tar.gz` - authoritative final state of the release
+- the existing `ChangeLog` - authoritative for formatting and editorial style
+
+Create a ChangeLog entry for version X.Y.Z.
+
+STYLE
+
+Match the existing ChangeLog style closely.
+
+The ChangeLog is a technical, file-oriented accounting of changes. It is not release-note prose and should not read like marketing copy.
+
+Use this general structure:
+
+    Thu Oct  8 17:08:00 2026  Author Name  <author@example.com>
+
+        [2.4.1]:
+        * VERSION: bump
+        * README.md: generated
+        * path/to/file
+        - concise change
+        - another concise change
+        (method_or_target)
+        - change specific to that method or target
+        * path/to/new/file: new
+        (method_name)
+        - concise description
+        * requires
+        - +New::Dependency 1.23
+        - bump Existing::Dependency to 2.0
+
+Follow these conventions:
+
+1. Organize primarily by file.
+
+2. Begin each file entry with:
+
+       * path/to/file
+
+3. Mark genuinely new files explicitly:
+
+       * path/to/file: new
+
+   Do not allow new files to disappear into a MANIFEST, buildspec, configuration, or generated-file entry.
+
+4. Use the status file as the authoritative source for deciding whether a file is new, modified, renamed, or deleted.
+
+5. Use indented `-` lines for concise descriptions of changes within a file.
+
+6. When useful, identify the affected method, Make target, recipe, or logical section on a separate parenthesized line:
+
+       (cmd_dist_file)
+       - add --path-only
+
+       (test-requires.raw)
+       - normalize scanned test dependencies before reconciliation
+
+7. Use method/target names when they make the entry more precise, but do not mechanically list every changed subroutine.
+
+8. Use terse implementation language. Prefer:
+
+       - lazy load HTTP::Tiny
+       - add --file-list support
+       - avoid rewriting unchanged dependency files
+       - resolve configured helper before PATH discovery
+
+   Avoid release-note prose such as:
+
+       - improves the developer experience
+       - provides a powerful new capability
+       - makes builds faster and more reliable
+
+9. Describe what changed, not why it is exciting.
+
+10. Preserve meaningful implementation distinctions. For example, distinguish:
+
+       - loading a module once
+       - invoking `main` directly
+       - lazy loading a dependency
+       - moving responsibility from one Make fragment to another
+       - separating filtering logic into a helper
+       - changing dependency reconciliation semantics
+
+11. For dependencies, use compact ChangeLog notation where appropriate:
+
+       - +File::Which 1.27
+       - +Perl::Tidy suggests
+       - bump CLI::Simple to 2.3.0
+
+12. For generated artifacts, say so succinctly:
+
+       * README.md: generated
+
+13. For closely related files with exactly the same change, `: likewise` is acceptable:
+
+       * bin/cmb.in
+       - load modulino once and invoke main directly
+       * bin/cpan-maker-bootstrapper.in: likewise
+       * share/modulino.tmpl: likewise
+
+14. Do not duplicate the same implementation detail under several files unless each file genuinely implements a distinct part of it.
+
+15. Do not merely enumerate diff hunks. Consolidate related low-level edits into one accurate ChangeLog statement.
+
+16. Do not infer behavior that the supplied artifacts do not support.
+
+17. Do not silently omit a changed file merely because its change seems unimportant. Determine whether it belongs in the ChangeLog. Generated noise may be summarized, but substantive source, build, configuration, dependency, test, and documentation changes should be represented.
+
+18. Pay particular attention to newly added source files. For every new implementation file:
+    - give it its own `: new` entry;
+    - identify its principal command/method when useful;
+    - summarize its main responsibilities from the actual source;
+    - do not describe it solely through the manifest or YAML entry that exposes it.
+
+19. Use the final tarball to resolve ambiguity about final content when the diff shows intermediate or subsequently changed implementation.
+
+20. Use the existing ChangeLog to match:
+    - indentation;
+    - capitalization;
+    - date/header format;
+    - use of `*`, `-`, parentheses, `: new`, `: likewise`, and `+dependency`;
+    - typical level of detail.
+
+SOURCE PRIORITY
+
+When sources disagree or serve different purposes, use them in this order:
+
+- New/modified/deleted status: `release-X.Y.Z.status`
+- Exact code changes: `release-X.Y.Z.diffs`
+- Final released implementation: `release-X.Y.Z.tar.gz`
+- File inventory/context: `release-X.Y.Z.lst`
+- Formatting/editorial precedent: existing `ChangeLog`
+
+The final tarball represents what will actually ship. If a diff describes an intermediate implementation that differs from the tarball, describe the final implementation.
+
+WORKING METHOD
+
+Before writing the ChangeLog:
+
+1. Identify every added, modified, renamed, and deleted file from the status file.
+2. Identify all genuinely new files.
+3. Inspect the diff for every substantive changed file.
+4. Inspect new files themselves, since they may have no ordinary before/after diff.
+5. Use the tarball when necessary to understand the final implementation.
+6. Group changes by file.
+7. Collapse mechanical edits into concise descriptions.
+8. Check that every substantive new file received an explicit `: new` entry.
+9. Check dependency files for additions, removals, and version changes.
+10. Check build/configuration files for changed targets, dependency relationships, generated artifacts, and command invocation behavior.
+11. Check tests for meaningful behavioral changes rather than simply saying "tests updated."
+12. Produce only the finished ChangeLog entry unless asked for commentary.
+
+The desired result should read like a maintainer's engineering ledger: compact, precise, comprehensive, and useful months or years later for determining exactly what changed in the release.

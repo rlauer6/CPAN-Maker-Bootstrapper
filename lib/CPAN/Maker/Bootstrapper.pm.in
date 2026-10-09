@@ -1087,6 +1087,7 @@ with C<make update>.
 
   .includes/bootstrap.mk       - used internally by the bootstrapper
   .includes/bash-completion.mk - make bash-completion target
+  .includes/build-init.mk      - used to initialize build-time variables
   .includes/modulino.mk        - make modulino target
   .includes/git.mk             - make git target
   .includes/help.mk            - make help target
@@ -1094,6 +1095,7 @@ with C<make update>.
   .includes/perl.mk            - pattern rules, syntax checking, tidy, critic
   .includes/publish.mk         - publish to CPAN
   .includes/release-notes.mk   - make release-notes target
+  .includes/test.mk            - recipes for the test targets; test, test-all, etc
   .includes/update.mk          - make update target
   .includes/upgrade.mk         - make upgrade/check-upgrade targets
   .includes/version.mk         - make release/minor/major targets
@@ -1116,6 +1118,14 @@ and C<make major>.
 The directory is created automatically the first time C<pod-review>
 or C<code-review> needs the default prompt files.
 
+=item * F<config.mk> - developer-maintained Make configuration for
+persistent project build settings. This file is not managed by
+C<make update>.
+
+=item * F<build-config.mk> - generated Make configuration containing
+resolved project values and discovered build helper commands. It is
+created automatically as needed and should not be edited or committed.
+
 =back
 
 =head1 THE PROJECT MAKEFILE
@@ -1132,6 +1142,11 @@ For example, a primary module of C<My::New::Module> produces:
 
 If C<MODULE_NAME> is not supplied on the command line, it is inferred
 from the project directory name.
+
+At build initialization, C<cmb create-build-config> resolves project
+paths, defaults, and configured helper commands into F<build-config.mk>,
+which is then included by Make. Developer overrides belong in
+F<config.mk>; F<build-config.mk> is generated state.
 
 Key Makefile targets:
 
@@ -1274,8 +1289,8 @@ Bumps the patch, minor, or major version number in C<VERSION>.
 
 =item C<make release-notes>
 
-Generates a diff, file list, and tarball comparing the current version
-to the previous git tag.
+Generates the diff, file list, Git status, and draft release tarball
+used as evidence for LLM-generated release notes.
 
 =item C<make clean>
 
@@ -1804,13 +1819,15 @@ the release artifacts produced by C<make release-notes>:
 
  release-<version>.diffs
  release-<version>.lst
+ release-<version>.status
  release-<version>.tar.gz
 
  cmb release-notes <version>
 
-The generated release notes are written to C<release-notes-E<lt>versionE<gt>.md>.
-Binary files are automatically excluded. Use C<--max-diff-files> to
-cap token consumption on large distributions (default: 50, 0 = unlimited).
+The generated release notes are written to
+C<release-notes-E<lt>versionE<gt>.md>.  Binary files are automatically
+excluded. Use C<--max-diff-files> to cap token consumption on large
+distributions (default: 50, 0 = unlimited).
 
 =item code-finding
 
@@ -3147,6 +3164,27 @@ These files describe build inputs. For environment variables use
 F<builder.env>; for project-specific Makefile behavior use
 F<project.mk>.
 
+=head3 C<perlcritic> and C<perltidy> Gates
+
+During a CI build, the build script enables C<PERLTIDY> and
+C<PERLCRITIC> when it can find the corresponding configuration files
+in the project.
+
+For reproducible CI builds, keep the project's C<perltidyrc> and
+C<perlcriticrc> aligned with the configuration used in your development
+environment.
+
+Many editors and IDEs run Perltidy or Perl::Critic automatically while
+you work. If those tools use a personal configuration that differs from
+the project's checked-in configuration, code that appears clean locally
+may fail during C<build-ci>.
+
+When a project-local C<perltidyrc> or C<perlcriticrc> is present,
+C<build-ci> uses it to enforce the project's formatting and critic
+policies in the clean build environment. If no project-local
+configuration can be discovered, the corresponding check is disabled
+rather than falling back to the tool's default configuration.
+
 =head3 See Also
 
 L</make workflow>, L</make build-ci>
@@ -3460,7 +3498,7 @@ See L</MODULINOS> for full details.
 
 =head2 What is C<make release-notes> used for?
 
-C<make release-notes> generates three artifacts comparing the current
+C<make release-notes> generates four artifacts comparing the current
 working state of your repository against the previous git tag:
 
 =over 4
@@ -3471,23 +3509,36 @@ changed files
 =item * F<release-E<lt>versionE<gt>.lst> - a list of added, modified,
 and removed files
 
+=item * F<release-E<lt>versionE<gt>.status> - Git name-status output
+classifying added, modified, deleted, and renamed files
+
 =item * F<release-E<lt>versionE<gt>.tar.gz> - a tarball containing
 only the changed files
 
 =back
 
-These are primarily useful for generating release notes and changelogs,
-and for submitting targeted patches. Run it after bumping the version
-with C<make release>, C<make minor>, or C<make major> and before
-publishing to CPAN:
+These are primarily useful for generating release notes and
+changelogs, and for submitting targeted patches. Run it after bumping
+the version with C<make release>, C<make minor>, or C<make major> and
+before creating your final distribution.
 
- make minor
- make release-notes
- # review release-1.1.0.diffs
- make
+  make minor
+  make release-notes
+  # review release-1.1.0.diffs
+  make
 
 The artifacts are all the clues needed for LLMs to produce accurate
 and well written release notes for your project.
+
+To generate the release artifacts without submitting them to the LLM,
+use:
+
+  make release-notes DRYRUN=1
+
+This is useful for inspecting or debugging the release evidence before
+requesting generated release notes. The F<.diffs>, F<.lst>, F<.status>,
+and F<.tar.gz> artifacts are produced normally, but no LLM request is
+made.
 
 The release artifacts are cleaned up by C<make clean>.
 

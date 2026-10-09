@@ -22,7 +22,6 @@ extra-files:
     - Makefile.txt 
     - builder
     - builder.env
-
     - cpan-maker-bootstrapper.yml
     - cmb_md5sums.txt
     - gitignore
@@ -34,6 +33,7 @@ extra-files:
     - .includes/publish.mk
     - .includes/bootstrap.mk
     - .includes/builder.mk
+    - .includes/build-init.mk
     - .includes/release-notes.mk
     - .includes/test.mk
     - .includes/update.mk
