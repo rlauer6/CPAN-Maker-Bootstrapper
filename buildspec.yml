@@ -27,6 +27,7 @@ extra-files:
     - gitignore
     - .github/workflows/build.yml
     - .includes/git.mk
+    - .includes/change-log.mk
     - .includes/help.mk
     - .includes/local.mk
     - .includes/perl.mk
@@ -43,6 +44,8 @@ extra-files:
     - .includes/bash-completion.mk
     - .prompts/code-review.prompt
     - .prompts/pod-review.prompt
+    - .prompts/release-notes.prompt
+    - .prompts/change-log.prompt
     - share/cli-module.pm.tmpl
     - share/class-module.pm.tmpl
     - share/test.t.tmpl

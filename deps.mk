@@ -13,6 +13,11 @@
     ./lib/CPAN/Maker/Bootstrapper/Constants.pm \
     ./lib/Text/ASCIITable/FixANSI.pm
 
+# ./lib/CPAN/Maker/Bootstrapper/Role/LLM/ChangeLog.pm.in
+./lib/CPAN/Maker/Bootstrapper/Role/LLM/ChangeLog.pm: \
+    ./lib/CPAN/Maker/Bootstrapper/Constants.pm \
+    ./lib/Git/ReleaseDiffs.pm
+
 # ./lib/CPAN/Maker/Bootstrapper/Role/LLM/Models.pm.in
 ./lib/CPAN/Maker/Bootstrapper/Role/LLM/Models.pm: \
     ./lib/CPAN/Maker/Bootstrapper/Role/LLM/Utils.pm

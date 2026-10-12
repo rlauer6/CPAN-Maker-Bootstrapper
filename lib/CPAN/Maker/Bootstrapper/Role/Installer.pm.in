@@ -109,6 +109,16 @@ sub cmd_install {
     return $SUCCESS;
   }
 
+  return $self->_import_project( module => $module_name, stub => $stub, import_paths => $import_paths );
+}
+
+########################################################################
+sub _import_project {
+########################################################################
+  my ( $self, %args ) = @_;
+
+  my ( $module_name, $stub, $import_paths ) = @args{qw(module stub import_paths)};
+
   if ( @{$import_paths} && !$self->get_project_tarball ) {
     my $resolved_installdir = $self->_resolve_install_dir($module_name);
 
