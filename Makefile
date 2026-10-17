@@ -112,18 +112,16 @@ DEPS += $(POD_MODULES)
 endif
 
 MANAGED_MK_FILES = \
+    add-plugin.mk \
     build-init.mk \
     bash-completion.mk \
     bootstrap.mk \
     builder.mk \
-    change-log.mk \
     git.mk \
     help.mk \
     local.mk \
     modulino.mk \
     perl.mk \
-    publish.mk \
-    release-notes.mk \
     test.mk \
     update.mk \
     upgrade.mk \
@@ -138,6 +136,9 @@ ifeq ($(BOOTSTRAP_BUILD),)
     config.mk \
     $(INCLUDES_FILES)
 endif
+
+# Project-registered command role extensions
+-include $(wildcard .roles/*/role.mk)
 
 .DEFAULT_GOAL := $(TARBALL)
 

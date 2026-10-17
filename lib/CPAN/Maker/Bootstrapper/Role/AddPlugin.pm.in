@@ -1,0 +1,127 @@
+package CPAN::Maker::Bootstrapper::Role::AddPlugin;
+
+use strict;
+use warnings;
+
+use CLI::Simple::Constants qw(:booleans);
+use CLI::Simple::Utils qw(choose slurp);
+
+use Data::Dumper;
+use English qw(-no_match_vars);
+use File::ShareDir qw(dist_dir dist_file);
+use File::Copy;
+use File::Path qw(make_path);
+use Scalar::Util qw(reftype);
+use YAML::Tiny;
+
+use Role::Tiny;
+
+our $VERSION = '@PACKAGE_VERSION@';
+
+########################################################################
+sub cmd_add_plugin {
+########################################################################
+  my ($self) = @_;
+
+  my ($plugin) = $self->get_args;
+
+  die "ERROR: usage: add-plugin plugin-name\n"
+    if !$plugin;
+
+  my $distribution_name = sprintf 'CPAN-Maker-Bootstrapper-Role-%s', $plugin;
+
+  my $dist_dir = eval { return dist_dir($distribution_name); };
+
+  die "ERROR: no such plugin $plugin\n"
+    if !$dist_dir;
+
+  my $plugin_dir = sprintf '.roles/%s', $distribution_name;
+
+  die "ERROR: plugin already exists. use --force to overwrite plugin\n"
+    if !$self->get_force && -d $plugin_dir;
+
+  if ( !-d $plugin_dir ) {
+    make_path($plugin_dir)
+      or die "ERROR: could not create $plugin_dir\n";
+  }
+
+  die "ERROR: distribution does not contain a role.yml file\n"
+    if !-e "$dist_dir/role.yml";
+
+  foreach my $file (qw(role.yml role.mk)) {
+    next if !-f "$plugin_dir/$file";
+
+    rename "$plugin_dir/$file", "$plugin_dir/$file.bak"
+      or die "ERROR: could not create backup file: $file\n";
+  }
+
+  eval {
+    copy "$dist_dir/role.yml", "$plugin_dir/role.yml"
+      or die "ERROR: could not copy role.yml to $plugin_dir/role.yml\n";
+
+    if ( -f "$dist_dir/role.mk" ) {
+      copy "$dist_dir/role.mk", "$plugin_dir/role.mk"
+        or die "ERROR: could not copy role.mk to $plugin_dir/role.mk\n";
+    }
+
+    $self->_check_roles($plugin_dir);
+  };
+
+  my $err = $EVAL_ERROR;
+
+  if ($err) {
+    unlink "$plugin_dir/role.yml";
+    unlink "$plugin_dir/role.mk";
+
+    # if one or more of the .bak files do not exist this will fail silently - no harm, no foul
+    rename "$plugin_dir/role.yml.bak", "$plugin_dir/role.yml";
+    rename "$plugin_dir/role.mk.bak",  "$plugin_dir/role.mk";
+    die "ERROR: could not install plugin\n$err";
+  }
+
+  unlink "$plugin_dir/role.yml.bak";
+  unlink "$plugin_dir/role.mk.bak";
+  print {*STDOUT} <<"END_OF_TEXT";
+Plugin $plugin successfully installed.
+
+Plugin targets are now available. Try 'make help' to see all targets.
+
+To make this plugin available to others who check out the project,
+consider adding its files to version control:
+
+  git add .roles/$distribution_name/
+
+END_OF_TEXT
+  return $SUCCESS;
+}
+
+########################################################################
+sub _check_roles {
+########################################################################
+  my ( $self, $plugin_dir ) = @_;
+
+  my $roles = eval {
+    my $yaml = YAML::Tiny->read("$plugin_dir/role.yml");
+    return $yaml->[0]->{roles};
+  };
+
+  die "ERROR: unable to determine roles from role.yml\n"
+    if !$roles || $EVAL_ERROR;
+
+  die "ERROR: roles must be a hash of command/class pairs. Example: foo: C\n"
+    if !ref $roles || reftype($roles) ne 'HASH';
+
+  foreach my $class ( values %{$roles} ) {
+    eval {
+      my $package_name = $class;
+      $package_name =~ s{::}{/}xmsg;
+
+      require "$package_name.pm";
+      1;
+    } or die "ERROR: $class cannot be loaded\n$EVAL_ERROR";
+  }
+
+  return;
+}
+
+1;

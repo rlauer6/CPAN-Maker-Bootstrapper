@@ -41,12 +41,6 @@ sub cmd_create_config {
     # path to perlcritic configuration file (enables critic checking)
     # perlcriticrc = ~/.perlcriticrc
 
-    # shell command that prints your LLM API key (recommended)
-    # llm-api-key-helper = cat ~/.ssh/anthropic-api-key
-
-    # maximum number of output tokens
-    # max-tokens = 4096
-
 END_STUB
 
   return $SUCCESS;

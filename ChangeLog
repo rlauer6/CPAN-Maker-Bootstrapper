@@ -1,3 +1,74 @@
+Thu Oct 15 17:03:39 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[2.5.1]:
+	* VERSION: bump
+	* README.md: generated
+	* release-notes.md: updated (symlink -> release-notes/release-notes-2.5.1.md)
+	* .gitignore
+	- add !cpanfile.darkpan negation rule
+	* .includes/add-plugin.mk: new
+	* .includes/update.mk
+	- add INCLUDES_DIR and BOOTSTRAPPER_DIST_DIR variable definitions
+	- add pre-update phony target and make it a prerequisite of post-update
+	- move Makefile copy and chmod into post-update; invoke pre-update from update before managed file copies
+	* MANIFEST
+	- +add-plugin.mk
+	- -publish.mk, -release-notes.mk, -change-log.mk
+	* Makefile
+	- +add-plugin.mk to MANAGED_MK_FILES
+	- -publish.mk, -release-notes.mk, -change-log.mk from MANAGED_MK_FILES
+	- include $(wildcard .roles/*/role.mk) for project-registered command role extensions
+	* buildspec.yml
+	(extra-files): +.includes/add-plugin.mk; -.includes/publish.mk, -.includes/release-notes.mk, -.includes/change-log.mk, -.prompts/code-review.prompt, -.prompts/pod-review.prompt, -.prompts/release-notes.prompt, -.prompts/change-log.prompt
+	* cmb_md5sums.txt
+	- +.includes/add-plugin.mk
+	- -.includes/publish.mk, -.includes/release-notes.mk, -.includes/change-log.mk checksums
+	- update checksums for Makefile, .includes/update.mk
+	* cpan-maker-bootstrapper.yml
+	- remove annotate, change-log, code-finding, code-review, models, pod-finding, pod-review, publish-to-cpan, release-notes, update-annotations commands
+	- add add-plugin command mapped to CPAN::Maker::Bootstrapper::Role::AddPlugin
+	- add uninstall command mapped to CPAN::Maker::Bootstrapper::Role::Uninstall
+	- remove --max-tokens|-t and --model|-M options
+	- remove llm and llm_api_key_helper extra_options
+	* deps.mk
+	- remove LLM::* role dependencies (Annotator, ChangeLog, Models, ReleaseNotes, Reviewer, Utils)
+	- remove LLM::Utils dependency from Bootstrapper.pm
+	* lib/CPAN/Maker/Bootstrapper.pm.in
+	- change CLI::Simple->import to load .roles/*/role.yml in addition to :roles
+	- remove 'with CPAN::Maker::Bootstrapper::Role::LLM::Utils'
+	* lib/CPAN/Maker/Bootstrapper/Role/AddPlugin.pm.in: new
+	* lib/CPAN/Maker/Bootstrapper/Role/Init.pm.in
+	(_init_config)
+	- remove set_llm_api_key_helper and set_max_tokens calls
+	(init)
+	- remove set_max_tokens default initialization
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Annotator.pm.in: deleted
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/ChangeLog.pm.in: deleted
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Models.pm.in: deleted
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/ReleaseNotes.pm.in: deleted
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Reviewer.pm.in: deleted
+	* lib/CPAN/Maker/Bootstrapper/Role/LLM/Utils.pm.in: deleted
+	* lib/CPAN/Maker/Bootstrapper/Role/PAUSEUpload.pm.in: deleted
+	* lib/CPAN/Maker/Bootstrapper/Role/ShowDefaults.pm.in
+	(_resolve_defaults)
+	- remove llm_api_key_helper and max_tokens entries from config list
+	* lib/CPAN/Maker/Bootstrapper/Role/Uninstall.pm.in: new
+	* .roles/CPAN-Maker-Bootstrapper-Role-LLM/role.mk: new
+	* .roles/CPAN-Maker-Bootstrapper-Role-LLM/role.yml: new
+	* .prompts/cli-tool.prompt: deleted
+	* .prompts/code-review.prompt: deleted
+	* .prompts/pod-review.prompt: deleted
+	* .includes/publish.mk: deleted
+	* .includes/release-notes.mk: deleted
+	* .includes/change-log.mk: deleted
+	* requires
+	- -IO::Scalar 2.113
+	- -Pod::Extract 1.0.2
+	* cpanfile: likewise
+	* suggests
+	- -LLM::API 1.0.1
+	- -Term::ANSI::Color
+
 Mon Oct 12 06:14:03 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[2.5.0]:
@@ -125,6 +196,11 @@ Thu Oct  8 17:08:00 2026  Rob Lauer  <rclauer@gmail.com>
 	- document perlcritic and perltidy CI gates
 	* lib/CPAN/Maker/Bootstrapper/ConfigReader.pm.in
 	- fix SYNOPSIS package name
+	(new)
+	- uses environment, .cpan-makerrc, .git/config and $HOME/.gitconfig as sources
+	- POD updates
+	(cpan_maker_max_tokens): removed
+	(cpan_maker_llm_api_key_helper): removed
 	* lib/CPAN/Maker/Bootstrapper/Role/CreateBuildConfig.pm.in: new
 	(cmd_create_build_config)
 	- generate build-config.mk assignments
@@ -149,6 +225,8 @@ Thu Oct  8 17:08:00 2026  Rob Lauer  <rclauer@gmail.com>
 	- separate dependency filtering from command output
 	* lib/CPAN/Maker/Bootstrapper/Role/Init.pm.in
 	(_init_config): save config reader on application
+	(init)
+	- initialize undefined options from config
 	* lib/CPAN/Maker/Bootstrapper/Role/PAUSEUpload.pm.in
 	- lazy load HTTP::Tiny and MIME::Base64
 	* lib/CPAN/Maker/Bootstrapper/Role/PerlCritic.pm.in: new

@@ -41,3 +41,4 @@ deps.mk
 build-config.mk
 config.mk
 config.ini
+!cpanfile.darkpan

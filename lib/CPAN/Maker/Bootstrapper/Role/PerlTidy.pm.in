@@ -50,17 +50,20 @@ sub cmd_perltidy {
       errorfile   => \$errorfile,
     );
 
-    $tidy_args{perltidyrc} = $profile
-      if $profile;
+    if ($profile) {
+      $tidy_args{perltidyrc} = $profile;
+    }
 
     my $error = Perl::Tidy::perltidy(%tidy_args);
 
     if ($error) {
-      print {*STDERR} $stderr
-        if $stderr;
+      if ($stderr) {
+        print {*STDERR} $stderr;
+      }
 
-      print {*STDERR} $errorfile
-        if $errorfile;
+      if ($errorfile) {
+        print {*STDERR} $errorfile;
+      }
 
       die "ERROR: perltidy failed for $file\n";
     }

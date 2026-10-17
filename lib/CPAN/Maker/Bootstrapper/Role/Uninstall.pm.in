@@ -1,0 +1,68 @@
+package CPAN::Maker::Bootstrapper::Role::Uninstall;
+
+use strict;
+use warnings;
+
+use CLI::Simple::Constants qw(:booleans);
+use English qw(-no_match_vars);
+use ExtUtils::Install ();
+use ExtUtils::Installed ();
+
+use Role::Tiny;
+
+########################################################################
+sub cmd_uninstall {
+########################################################################
+  my ($self) = @_;
+
+  my $distribution = 'CPAN::Maker::Bootstrapper';
+
+  my $installed = ExtUtils::Installed->new( skip_cwd => 1 );
+  my $packlist  = eval { $installed->packlist($distribution) };
+
+  die "ERROR: installation packlist not found for $distribution\n"
+    if !$packlist;
+
+  my $packfile = $packlist->packlist_file;
+
+  die "ERROR: installation packlist not found for $distribution\n"
+    if !$packfile || !-f $packfile;
+
+  my @files = sort keys %{$packlist};
+
+  die "ERROR: refusing to use an empty packlist\n"
+    if !@files;
+
+  for my $file (@files) {
+    die "ERROR: nonabsolute path in packlist: $file\n"
+      if $file !~ m{^/};
+  }
+
+  $self->get_logger->info("Distribution: $distribution");
+  $self->get_logger->info("Packlist: $packfile");
+  $self->get_logger->info( "Recorded files: ", scalar(@files) );
+  $self->get_logger->info( join "\n",          @files );
+  $self->get_logger->info("$packfile (packlist)");
+
+  if ( $self->get_dry_run || !$self->get_force ) {
+    $self->get_logger->error("\nPreview only. Use --force to uninstall.");
+    return $SUCCESS;
+  }
+
+  # ExtUtils::Install::uninstall expects the packlist *filename*, not the object.
+  ExtUtils::Install::uninstall( $packfile, 1, 0 );
+
+  my @remaining = grep { -e $_ || -l $_ } @files;
+  push @remaining, $packfile
+    if -e $packfile || -l $packfile;
+
+  if (@remaining) {
+    $self->get_logger->warn( "files remain after uninstall:", map {"  $_\n"} @remaining );
+    return $FAILURE;
+  }
+
+  $self->get_logger->info("Uninstall completed; all recorded files were removed.");
+  return $SUCCESS;
+}
+
+1;

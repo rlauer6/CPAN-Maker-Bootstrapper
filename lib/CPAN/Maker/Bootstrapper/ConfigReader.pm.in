@@ -16,13 +16,33 @@ sub new {
 ########################################################################
   my ( $class, $file ) = @_;
 
-  ($file) = grep {defined} ( $file, $ENV{CPAN_MAKER_CONFIG}, File::HomeDir->my_home . '/.gitconfig' );
+  my $gitconfig  = File::HomeDir->my_home . '/.gitconfig';
+  my @candidates = ( $file, $ENV{CPAN_MAKER_CONFIG}, '.cpan-makerrc', '.git/config', $gitconfig, );
+
+  my $explicit = defined $file ? $file : $ENV{CPAN_MAKER_CONFIG};
+
+  if ( defined $explicit && !-f $explicit ) {
+    die sprintf "Configuration file does not exist: %s\n", $explicit;
+  }
+
+  ($file) = grep { defined $_ && -f $_ } @candidates;
 
   die "ERROR: no configuration file\n"
     if !$file || !-e $file;
 
   my $config = Config::Tiny->read($file)
     or die "ERROR: Could not read $file: " . Config::Tiny->errstr . "\n";
+
+  if ( $file ne $gitconfig && -f $gitconfig ) {
+    my $git = Config::Tiny->read($gitconfig);
+
+    if ( $git && $git->{user} ) {
+      $config->{user} //= {};
+
+      $config->{user}{name}  //= $git->{user}{name};
+      $config->{user}{email} //= $git->{user}{email};
+    }
+  }
 
   my $self = $class->SUPER::new( { config => $config, config_file => $file } );
 
@@ -41,6 +61,7 @@ sub get_value {
 sub user_name {
 ########################################################################
   my ($self) = @_;
+
   return $self->get_value( 'user', 'name' );
 }
 
@@ -64,14 +85,6 @@ sub cpan_maker_basedir {
   my ($self) = @_;
 
   return $self->get_value( 'cpan-maker', 'basedir' );
-}
-
-########################################################################
-sub cpan_maker_max_tokens {
-########################################################################
-  my ($self) = @_;
-
-  return $self->get_value( 'cpan-maker', 'max-tokens' );
 }
 
 ########################################################################
@@ -106,14 +119,6 @@ sub cpan_maker_syntax_checking {
   return $self->get_value( 'cpan-maker', 'syntax-checking' );
 }
 
-########################################################################
-sub cpan_maker_llm_api_key_helper {
-########################################################################
-  my ($self) = @_;
-
-  return $self->get_value( 'cpan-maker', 'llm-api-key-helper' );
-}
-
 1;
 
 __END__
@@ -124,36 +129,43 @@ __END__
 
 =head1 NAME
 
-CPAN::Maker::ConfigReader - Read CPAN::Maker configuration from an INI file
+CPAN::Maker::Bootstrapper::ConfigReader - Read CPAN::Maker configuration from an INI file
 
 =head1 SYNOPSIS
 
   use CPAN::Maker::Bootstrapper::ConfigReader;
 
-  # uses ~/.gitconfig by default
-  my $reader = CPAN::Maker::ConfigReader->new;
+  # Automatically discover a configuration file
+  my $reader = CPAN::Maker::Bootstrapper::ConfigReader->new;
 
-  # or specify a file explicitly
-  my $reader = CPAN::Maker::ConfigReader->new('/path/to/.cpan-makerrc');
+  # Specify a configuration file explicitly
+  my $reader = CPAN::Maker::Bootstrapper::ConfigReader->new('/path/to/.cpan-makerrc');
 
-  # or set CPAN_MAKER_CONFIG in the environment
-  # CPAN_MAKER_CONFIG=~/.cpan-makerrc
-  my $reader = CPAN::Maker::ConfigReader->new;
+  # Or select a file through the environment
+  $ENV{CPAN_MAKER_CONFIG} = '/path/to/settings.ini';
+  my $reader = CPAN::Maker::Bootstrapper::ConfigReader->new;
 
   print $reader->user_name;
   print $reader->cpan_maker_basedir;
 
 =head1 DESCRIPTION
 
-C<CPAN::Maker::ConfigReader> reads configuration for the
-C<CPAN::Maker> build system from an INI-format file. By default it
-reads from the user's global F<~/.gitconfig> file, which means no
-additional configuration is required for most developers who already
-have git set up.
+=head1 DESCRIPTION
 
-For users who prefer a dedicated configuration file or who do not use
-git, any properly formatted INI file can be used instead. See
-L</CONFIGURATION FILE> for the expected format.
+C<CPAN::Maker::Bootstrapper::ConfigReader> reads INI-format
+configuration files used by C<CPAN::Maker::Bootstrapper>.
+
+Configuration can be supplied explicitly, selected through the
+C<CPAN_MAKER_CONFIG> environment variable, or discovered automatically
+from conventional project and Git configuration files.
+
+When the selected configuration file does not provide a user's name
+or email address, the reader attempts to obtain the missing values
+from F<~/.gitconfig>. Values explicitly defined in the selected file
+take precedence over those from the user's Git configuration.
+
+See L</CONFIGURATION FILE> for the supported settings and L</new>
+for the configuration file discovery order.
 
 =head1 CONFIGURATION FILE
 
@@ -195,8 +207,6 @@ bugtracker URLs when C<--resources github> is specified.
       syntax-checking    = on
       perltidyrc         = /home/you/.perltidyrc
       perlcriticrc       = /home/you/.perlcriticrc
-      llm-api-key-helper = cat ~/.ssh/anthropic-api-key
-      max-tokens         = 4096
 
 =over 4
 
@@ -215,7 +225,7 @@ command line.
 
 Set to C<on> to enable Perl syntax checking during the build via
 C<perl -wc> in the C<%.pm> and C<%.pl> pattern rules. See
-L<CPAN::Maker::Bootstrapper/EXTENDING THE BUILD SYSTEM> for details.
+L<CPAN::Maker::Bootstrapper/CUSTOM BUILD TARGETS> for details.
 
 =item C<perltidyrc>
 
@@ -227,38 +237,52 @@ C<perltidy> checking in the build system pattern rules.
 Path to a F<.perlcriticrc> configuration file. When set, enables
 C<perlcritic> checking in the build system pattern rules.
 
-=item C<llm-api-key-helper>
-
-A shell command whose output is used as the LLM API key. Executed when
-no key is passed directly and C<LLM_API_KEY> is not set in the environment.
-The command should print the key and nothing else. The file it reads should
-be chmod 600.
-
-Example: cat ~/.ssh/anthropic-api-key
-
 =back
+
+=head2 Extension Configuration
+
+Extensions may define additional INI sections containing their own
+configuration settings. These sections are available through
+C<get_value()> and are also used by Bootstrapper to initialize
+extension option accessors.
+
+See L<CPAN::Maker::Bootstrapper/Extension Configuration> for details
+of extension configuration and option precedence.
 
 =head1 METHODS
 
 =head2 new
 
-  my $reader = CPAN::Maker::ConfigReader->new;
-  my $reader = CPAN::Maker::ConfigReader->new($file);
+  my $reader = CPAN::Maker::Bootstrapper::ConfigReader->new;
+  my $reader = CPAN::Maker::Bootstrapper::ConfigReader->new($file);
 
 Creates a new C<ConfigReader> instance. The configuration file is
 resolved in the following order:
 
 =over 4
 
-=item 1. The C<$file> argument if provided
+=item 1. The C<$file> argument, if provided
 
 =item 2. The C<CPAN_MAKER_CONFIG> environment variable
 
-=item 3. F<~/.gitconfig>
+=item 3. F<.cpan-makerrc> in the current directory
+
+=item 4. F<.git/config> in the current directory
+
+=item 5. F<~/.gitconfig>
 
 =back
 
-Dies if the resolved file does not exist or cannot be read.
+The first existing file is selected. If C<$file> or
+C<CPAN_MAKER_CONFIG> explicitly specifies a nonexistent file, the
+constructor throws an exception rather than trying another candidate.
+
+The constructor also throws an exception if no configuration file
+can be found or the selected file cannot be read.
+
+When the selected file is not F<~/.gitconfig>, missing C<name> and
+C<email> settings in its C<[user]> section are populated from
+F<~/.gitconfig>, when available.
 
 =head2 get_value
 
@@ -283,15 +307,6 @@ Returns C<github> from the C<[user]> section.
 =head2 cpan_maker_basedir
 
 Returns C<basedir> from the C<[cpan-maker]> section.
-
-=head2 cpan_llm_api_key_helper
-
-Bash snippet or the name of an executable script that provides the LLM
-API key.
-
-=head2 max-tokens
-
-The maxium number of tokens output tokens.
 
 =head2 cpan_maker_perltidyrc
 
@@ -323,6 +338,10 @@ profile:
  export CPAN_MAKER_CONFIG=~/.cpan-makerrc
 
 =back
+
+C<CPAN_MAKER_CONFIG> takes precedence over the automatically
+discovered files but can be overwritten by an explicit constructor
+argument.
 
 =head1 SEE ALSO
 

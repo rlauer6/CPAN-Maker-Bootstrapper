@@ -11,6 +11,9 @@
   * [The Stack](#the-stack)
   * [Best Practices Out of the Box](#best-practices-out-of-the-box)
   * [Perl Quality Tools](#perl-quality-tools)
+    * [Linting](#linting)
+    * [Syntax Checking](#syntax-checking)
+    * [Skipping Quality Gates](#skipping-quality-gates)
   * [A GNU Make Tutorial in Disguise](#a-gnu-make-tutorial-in-disguise)
 * [IMPORTING FILES](#importing-files)
   * [Determining the Primary Module](#determining-the-primary-module)
@@ -21,7 +24,8 @@
   * [Creating a Project Tarball](#creating-a-project-tarball)
   * [Import Destination Safety](#import-destination-safety)
   * [Import Build Policy](#import-build-policy)
-  * [Next Steps After a Successful Import](#next-steps-after-a-successful-import)
+  * [First Task After a Successful Import](#first-task-after-a-successful-import)
+  * [Next Steps](#next-steps)
   * [Limitations](#limitations)
   * [Importing a CLI::Simple Scaffold Tarball](#importing-a-clisimple-scaffold-tarball)
 * [CONFIGURATION](#configuration)
@@ -31,24 +35,18 @@
   * [Makefile Targets](#makefile-targets)
   * [README.md](#readmemd)
 * [COMMANDS](#commands)
-  * [LLM Commands](#llm-commands)
-    * [Anthropic API Key](#anthropic-api-key)
-    * [Commands](#commands)
 * [OPTIONS](#options)
-* [THE REVIEW WORKFLOW](#the-review-workflow)
-  * [Overview](#overview)
-  * [Dry Run Mode](#dry-run-mode)
-  * [Dispositions](#dispositions)
-  * [Diminishing Returns and When to Stop](#diminishing-returns-and-when-to-stop)
-  * [The Release Artifact](#the-release-artifact)
-  * [Cost Management](#cost-management)
-  * [See Also](#see-also)
-* [PROMPT PROFILES](#prompt-profiles)
-  * [Using Profiles](#using-profiles)
-    * [Built-in Profiles](#built-in-profiles)
-    * [Creating Custom Profiles](#creating-custom-profiles)
-    * [Additional Profile Ideas](#additional-profile-ideas)
-* [EXTENDING THE BUILD SYSTEM](#extending-the-build-system)
+* [EXTENSIONS](#extensions)
+  * [Installing an Extension](#installing-an-extension)
+  * [Extension Components](#extension-components)
+    * [`role.yml`](#roleyml)
+    * [Perl Roles](#perl-roles)
+    * [`role.mk`](#rolemk)
+  * [Participating in Project Updates](#participating-in-project-updates)
+  * [Commands and Roles](#commands-and-roles)
+  * [Extension Configuration](#extension-configuration)
+  * [Option Precedence](#option-precedence)
+* [CUSTOM BUILD TARGETS](#custom-build-targets)
   * [Immutability Is a Feature](#immutability-is-a-feature)
   * [How the Makefile Works](#how-the-makefile-works)
   * [What Belongs in `project.mk`](#what-belongs-in-projectmk)
@@ -75,6 +73,7 @@
 * [FAQ](#faq)
   * [My build is failing with a module not found error during syntax](#my-build-is-failing-with-a-module-not-found-error-during-syntax)
   * [How do I do a fast build during development?](#how-do-i-do-a-fast-build-during-development)
+  * [Why should I commit config.mk to my project?](#why-should-i-commit-configmk-to-my-project)
   * [How do I add a new module or script to the project?](#how-do-i-add-a-new-module-or-script-to-the-project)
   * [How do I include additional files in the distribution?](#how-do-i-include-additional-files-in-the-distribution)
   * [I want to pin a version or add a module the scanner missed](#i-want-to-pin-a-version-or-add-a-module-the-scanner-missed)
@@ -87,7 +86,6 @@
   * [How do I disable syntax checking temporarily?](#how-do-i-disable-syntax-checking-temporarily)
   * [How do I upgrade the build system?](#how-do-i-upgrade-the-build-system)
   * [I want to add a bash script to my distribution](#i-want-to-add-a-bash-script-to-my-distribution)
-  * [What is `make release-notes` used for?](#what-is-make-release-notes-used-for)
   * [Can I distribute the POD in my modules separately?](#can-i-distribute-the-pod-in-my-modules-separately)
   * [My build is failing during syntax checking with](#my-build-is-failing-during-syntax-checking-with)
   * [Something still doesn't work - how do I report an issue?](#something-still-doesnt-work---how-do-i-report-an-issue)
@@ -131,9 +129,6 @@ CPAN::Maker::Bootstrapper - A complete build, dependency, and release framework 
     # Override git identity
     cmb --module My::Module --username "Rob Lauer" --email rob@example.org
 
-    # Run a code review on a module (set API key in environment)
-    cmb code-review lib/My/Module.pm    
-
 # DESCRIPTION
 
 `CPAN::Maker::Bootstrapper` provides a complete development framework
@@ -160,16 +155,6 @@ and CI workflow support
 modules published outside CPAN
 - Build-system update checks and managed-file drift detection,
 with support for upgrading and refreshing the framework
-- AI-assisted code review, POD review and generation, structured
-finding annotation, and release-note generation
-
-See ["LLM Commands"](#llm-commands) and ["THE REVIEW WORKFLOW"](#the-review-workflow) for details on the
-AI-assisted development tools.
-
-_NOTE: Check out the
-[release-notes](https://github.com/rlauer6/CPAN-Maker-Bootstrapper/tree/main/release-notes)
-directory in the GitHub project for examples of release notes generated by
-the LLM._
 
 # QUICK START
 
@@ -391,7 +376,7 @@ imports.
 
 - Learn More About `CPAN::Maker::Bootstrapper`
 
-    See ["EXTENDING THE BUILD SYSTEM"](#extending-the-build-system) for adding project-specific build
+    See ["CUSTOM BUILD TARGETS"](#custom-build-targets) for adding project-specific build
     logic and customizing the managed build framework.
 
     See ["Dependencies Management"](#dependencies-management) for details on dependency discovery,
@@ -496,9 +481,7 @@ maintained by the bootstrapper.
 The build system supports syntax checking, perltidy, and perlcritic as
 build-time quality gates.
 
-Syntax checking is controlled independently with `SYNTAX_CHECKING`:
-
-    make SYNTAX_CHECKING=OFF
+### Linting
 
 Perltidy and perlcritic are controlled by `LINT`, which acts as the
 master switch for both tools:
@@ -521,11 +504,32 @@ For example:
     make PERLTIDYRC=.perltidyrc
     make PERLCRITICRC=.perlcriticrc
 
+`PERLTIDYRC` and `PERLCRITICRC` are initialized in the
+autogenerated `build-config.mk` file. During generation,
+Bootstrapper searches for the corresponding configuration
+files in the following order:
+
+- 1. environment (`PERLTIDYRC`, `PERLCRITICRC`)
+- 2. `.perltidyrc`, `.perlcriticrc` in the project root
+- 3. `perltidyrc`, `perlcriticrc` in the project root
+- 4. `$HOME/.perltidyrc`, `$HOME/.perlcriticrc`
+
 If no profile is specified, the corresponding tool uses its default
 configuration.
 
 If a profile variable names a file that does not exist, the operation
 fails.
+
+_NOTE: For reproducible builds, keep your lint configuration
+files in the project. Relying on configuration files in individual
+developers' home directories may produce inconsistent results
+across development environments and CI._
+
+### Syntax Checking
+
+Syntax checking is controlled independently with `SYNTAX_CHECKING`:
+
+    make SYNTAX_CHECKING=OFF
 
 Modules or scripts that cannot be syntax-checked outside their runtime
 environment may be added to `PERLWC_SKIP` in `project.mk`:
@@ -537,6 +541,8 @@ Inter-module build dependencies may also be declared explicitly in
 
     lib/Foo/Bar.pm: lib/Foo.pm
 
+### Skipping Quality Gates
+
 `make quick` provides a fast development build that disables
 distribution dependency scanning and both lint tools while leaving
 syntax checking enabled:
@@ -546,6 +552,10 @@ syntax checking enabled:
 This is equivalent to:
 
     make SCAN=OFF LINT=OFF
+
+To establish consistent quality gate settings across development
+environments and CI, define them in `config.mk` and commit that
+file to source control. See ["THE PROJECT MAKEFILE"](#the-project-makefile).
 
 ## A GNU Make Tutorial in Disguise
 
@@ -570,7 +580,7 @@ is better expressed in Perl than in shell
 
 The build system is deliberately transparent to not only reveal _how
 the sausage is made_ but to expose these techniques to the developer
-so you can incorporate them in your recipes. However, the build sysetm
+so you can incorporate them in your recipes. However, the build system
 framework itself is read-only to discourage you from tampering with a
 complex set of recipes that have been carefully crafted and can easily
 be broken. Your extension point remains the `project.mk` file and the
@@ -930,37 +940,69 @@ directory and therefore does not require this restriction.
 After constructing the imported project, the bootstrapper runs the
 generated build to verify that the project can be built successfully.
 
-The import build uses the following defaults:
+The initial import build enforces the following settings:
 
     SCAN=on
-    SYNTAX_CHECKING=on
+    SYNTAX_CHECKING=off
     LINT=off
+    SKIP_TESTS=1
 
-Dependency scanning and syntax validation therefore remain enabled
-during import.
+Dependency scanning remains enabled during the initial import build.
 
-Linting is disabled by default because importing an existing project
-should not require that project to satisfy the bootstrapper's
-perltidy or perlcritic policy before it can be converted.
+## First Task After a Successful Import
 
-These defaults may be overridden through the corresponding environment
-variables.
+After a successful import you either have a project tree built for you
+or a tarball if you used the `--project-tarball` option.
 
-For example:
+The project is now capable of producing a CPAN distribution with the
+following caveats:
 
-    LINT=on cmb --import .
+- a local-lib environment has not yet been provisioned
 
-enables linting during the import build.
+    The first time you run make with `SYNTAX_CHECKING=on` (the default)
+    Bootstrapper will install all of the dependencies it detected in
+    `local/lib/perl5`.
 
-This setting applies only to the bootstrap import build. The generated
-project retains its normal build configuration and may enable linting
-for subsequent `make` invocations.
+- Tests were not run
 
-## Next Steps After a Successful Import
+    Tests are disabled during import since dependencies have not yet been
+    installed. Running `make` the first time will install dependencies
+    and attempt to run your tests.
 
-After a successful build you have a complete, buildable CPAN
-distribution, although it may not reflect everything you need for your
-project. Typical next steps:
+- syntax checking was not done
+
+    Running `make` the first time will syntax check all of your files
+    after installing dependencies. `.pm` files are created and syntax
+    checked in an order that respects the intra-project module
+    dependencies.
+
+- linting was not performed
+
+    Your files may not conform to `perltidy` and they may not pass
+    `perlcritic`'s critique.
+
+- running `make` the first time will perform the following actions:
+    - - install Perl module dependencies
+    - - syntax check your files
+    - - run `perltidy` if installed
+    - - run `perlcritic` if installed (severity level 5)
+    - - create a distribution with testing enabled
+
+So, your first task is to make sure the dependencies are installed
+properly and the distribution builds. That means fixing tests as
+necessary, specifying dependencies missed by the scanner, tidying
+files or resolving `perlcritic` findings. If you are not interested
+in linting yet, turn that off on your first make (`make
+LINT=off`). To turn linting off permanently add `LINT=off` to your
+`config.mk` file.
+
+See ["FAQ"](#faq) for more troubleshooting information for broken
+builds. 
+
+## Next Steps
+
+Once your project produces a CPAN distribution and passes your tests
+there are some other actions you should consider.
 
 - 1. Review and edit the generated `buildspec.yml` - verify the
 module name, author, and resource links are correct
@@ -971,24 +1013,20 @@ module name, author, and resource links are correct
     directory or the root of the project and add them to the
     `buildspec.yml` file.
 
-        extra_files:
-          - ChangeLog <= included in distribution tarball, but not installed
-          share:
-            - config/some-file.ini  <= installs config/some-file.in into the distribution's share directory
-            - my-app.json <= installs my-app.json from the root of your project into the distribution's share directory
+        extra-files:
+          - ChangeLog
+          - share:
+            - config/some-file.ini
+            - my-app.json
 
 - 3. Initialize a git repository with `make git`
-- 4. Run `make tidy` if you want to format the imported source
+- 4. Run `make tidy` if you wish to format the imported source
 
         make tidy
 
-    Perltidy uses `PERLTIDYRC` when configured and otherwise uses its
-    default configuration.
+    Perltidy uses the `perltidy` configuration file pointed to by `PERLTIDYRC`.
 
-- 5. Run `make` to produce the final distribution tarball
-
-    By default the generated build performs syntax checking, dependency
-    scanning, perltidy, and perlcritic.
+- 5. Control how you build
 
     Dependency scanning may be disabled with:
 
@@ -1061,86 +1099,75 @@ scaffold tarballs.
 
 # CONFIGURATION
 
-`cmb` can read configuration from your global `.gitconfig` or from
-a separate `.ini` file. Configuration values are used when
-scaffolding distributions and by the AI-assisted commands.
+`cmb` reads configuration from an INI-format file. The configuration
+file may be selected explicitly with `--config`, specified through
+the `CPAN_MAKER_CONFIG` environment variable, or discovered
+automatically.
 
-    git config --global user.github <your-username>
+Configuration values can be used to set defaults when scaffolding
+distributions and to configure installed extensions.
+
+See ["new" in CPAN::Maker::Bootstrapper::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3ABootstrapper%3A%3AConfigReader#new) for the
+configuration file discovery order.
+
+When `--installdir` is not supplied when you bootstrap a project, the
+bootstrapper uses `basedir` from the configuration when one is
+defined. Otherwise, it uses the current working directory as the base
+directory for the new project.
+
+An explicit `--installdir` always takes precedence.
+
+If `name` or `email` is missing from the `[user]` section,
+Bootstrapper attempts to obtain the missing values from
+`~/.gitconfig`.
+
+You can configure your name, email address, and GitHub identity with:
+
+    git config --global user.name <your-full-name>
+    git config --global user.email <your-email>
+    git config --global user.github <your-github-identity>
 
 If you typically create projects in one directory, add the `basedir`
 option:
 
     git config --global cpan-maker.basedir $HOME/git
 
-When `--installdir` is not supplied, the bootstrapper uses `basedir`
-from the configuration when one is defined. Otherwise, it uses the
-current working directory as the base directory for the new project.
-
-An explicit `--installdir` always takes precedence.
-
-A separate configuration file may contain entries such as:
+A Bootstrapper configuration file may contain entries such as:
 
     [user]
-           email = your-email@somedomain
-           name = First Last
-           # use to construct GitHub resource URLs
-           github = github-user
+          email = your-email@somedomain
+          name = First Last
+          # use to construct GitHub resource URLs
+          github = github-user
 
     [cpan-maker]
-           basedir   = /home/myhome/git
-           # indicates the resources section of Makefile.PL should contain github references
-           resources = github
-           llm-api-key-helper = cat ~/.ssh/anthropic-api-key
+          basedir   = /home/myhome/git
+          # indicates the resources section of Makefile.PL should contain github references
+          resources = github
 
-- `llm-api-key-helper`
+See [CPAN::Maker::Bootstrapper::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3ABootstrapper%3A%3AConfigReader) for a complete description of the
+configuration file.
 
-    For LLM commands (code-review, pod-review), you can specify a
-    shell command that outputs your API key without exposing it in shell
-    history:
+Use the `--config` option to use your custom config.
 
-        llm-api-key-helper = cat ~/.ssh/anthropic-api-key
+You can generate a starter configuration with:
 
-    When set, this command is executed to retrieve the API key, avoiding
-    the need to pass it on the command line or set it in the environment
-    manually. This is the recommended secure approach.
+    cmb create-config > ~/.cpan-makerrc
 
-    See [CPAN::Maker::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3AConfigReader) for a complete description of the
-    configuration file.
+Then point `cmb` at it by setting the
+`CPAN_MAKER_CONFIG` environment variable in your shell profile:
 
-    Use the `--config` option to use your custom config.
-
-    You can generate a starter configuration with:
-
-        cmb create-config > ~/.cpan-makerrc
-
-    Then point `cmb` at it by setting the
-    `CPAN_MAKER_CONFIG` environment variable in your shell profile:
-
-        export CPAN_MAKER_CONFIG=$HOME/.cpan-makerrc
+    export CPAN_MAKER_CONFIG=$HOME/.cpan-makerrc
 
 ## Environment
 
-- LLM\_API\_KEY
+- `CPAN_MAKER_CONFIG`
 
-    Your Anthropic Claude API key. Set this before running an LLM
-    command, including `code-review`, `pod-review`,
-    `release-notes`, and `change-log`.
+    Path to an INI-format configuration file. Takes precedence over
+    automatically discovered configuration files but is overridden by
+    `--config`.
 
-    The key is removed from environment so it is not inherited by child
-    processes such as 'make'. This does not protect against memory
-    inspection of the current process - see [LLM::API](https://metacpan.org/pod/LLM%3A%3AAPI) for how the key is
-    actually stored using a closure to prevent accidental serialization
-    via Dumper.
-
-    Avoid passing the key on the command line where it might be saved in
-    history and can be seen in process lists.
-
-- CPAN\_MAKER\_CONFIG
-
-    Path to a configuration file (in .ini format) containing user settings
-    such as name, email, GitHub username, and project base directory. If
-    not set, the bootstrapper will attempt to read settings from
-    ~/.gitconfig.
+    See ["new" in CPAN::Maker::Bootstrapper::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3ABootstrapper%3A%3AConfigReader#new).
 
 - SCAN
 
@@ -1175,14 +1202,11 @@ with `make update`.
         .includes/bootstrap.mk       - used internally by the bootstrapper
         .includes/bash-completion.mk - make bash-completion target
         .includes/build-init.mk      - used to initialize build-time variables
-        .includes/change-log.mk      - make change-log target
         .includes/modulino.mk        - make modulino target
         .includes/git.mk             - make git target
         .includes/help.mk            - make help target
         .includes/local.mk           - vendors dependencies for syntax checking
         .includes/perl.mk            - pattern rules, syntax checking, tidy, critic
-        .includes/publish.mk         - publish to CPAN
-        .includes/release-notes.mk   - make release-notes target
         .includes/test.mk            - recipes for the test targets; test, test-all, etc
         .includes/update.mk          - make update target
         .includes/upgrade.mk         - make upgrade/check-upgrade targets
@@ -1190,18 +1214,13 @@ with `make update`.
 
 - `project.mk` - your extension point for custom make rules,
 inter-module dependencies, and project-specific variables. Never
-touched by `make update`. See ["EXTENDING THE BUILD SYSTEM"](#extending-the-build-system).
+touched by `make update`. See ["CUSTOM BUILD TARGETS"](#custom-build-targets).
 - `modulino.tmpl` - template used by `make modulino` to
 generate bash wrapper scripts for modulino-style modules.
 - `VERSION` - contains the current version string in
 `major.minor.patch` format. Managed by `make release`, `make minor`,
 and `make major`.
 - `ChangeLog` - empty placeholder, required by the distribution.
-- `.prompts/`
-
-    The directory is created automatically the first time `pod-review`
-    or `code-review` needs the default prompt files.
-
 - `config.mk` - developer-maintained Make configuration for
 persistent project build settings. This file is not managed by
 `make update`.
@@ -1239,16 +1258,25 @@ For example, a project with `MODULE_NAME=My::New::Module` produces:
     PROJECT_NAME   := My-New-Module
     UNIT_TEST_NAME := t/00-my-new-module.t
 
-Make includes `build-config.mk` to make these values available to the
-build recipes. Developers can customize the build through `config.mk`
-and the supported configuration settings. Changes to `config.mk`
-cause `build-config.mk` to be regenerated, ensuring that the build
-uses the updated configuration.
+`build-config.mk` is generated configuration derived from the
+current build environment. It provides reasonable defaults by
+discovering available tools, configuration files, and other
+settings needed by the build. It is regenerated when a fresh
+build environment is established and should not be edited or
+committed.
 
-`build-config.mk` is generated state and should not be edited
-directly. The `Makefile` and its included recipes provide the build
-machinery; `config.mk` provides a place for project-specific
-overrides.
+`config.mk` provides persistent, project-specific overrides
+for these discovered settings. Values defined in `config.mk`
+take precedence over the corresponding defaults in
+`build-config.mk`.
+
+Because discovered settings may differ between development
+machines and CI environments, projects should record their
+intended build policy in `config.mk` and commit that file to
+source control.
+
+Changes to `config.mk` cause `build-config.mk` to be
+regenerated so the build incorporates the updated settings.
 
 ## Makefile Targets
 
@@ -1273,36 +1301,6 @@ overrides.
     The target depends on the modulino, so it will build `bin/<alias>`
     first if needed. Completion is only available for modulinos that
     subclass `CLI::Simple`.
-
-- `make change-log`
-
-    Generates a draft ChangeLog entry for the current release using
-    an LLM and the release artifacts produced by the build process,
-    including the Git diff, file inventory, Git status, and
-    distribution tarball.
-
-        make change-log
-        make change-log MODEL=<model-name>
-        make change-log DRYRUN=1
-
-    The optional `MODEL` variable overrides the configured LLM model
-    for this invocation. Run `cmb models` to list available models.
-
-    Set `DRYRUN=1` to prepare the ChangeLog request without submitting
-    it to the LLM.
-
-    The target invokes `cmb change-log`, using
-    `.prompts/change-log.prompt` to prepare the request. The prompt
-    can be customized to follow the project's established ChangeLog
-    conventions.
-
-    The generated entry is written to `ChangeLog-VERSION.tmp` in the
-    project directory. The existing `ChangeLog` is not modified.
-
-    Review the generated entry and incorporate it into `ChangeLog`
-    before preparing the final release.
-
-    See ["LLM Commands"](#llm-commands) for the `change-log` command.
 
 - `make help`
 
@@ -1416,33 +1414,6 @@ overrides.
 - `make release` / `make minor` / `make major`
 
     Bumps the patch, minor, or major version number in `VERSION`.
-
-- `make release-notes`
-
-    Generates draft release notes using an LLM and the release artifacts
-    produced by the build process, including the Git diff, file inventory,
-    Git status, and distribution tarball.
-
-        make release-notes
-        make release-notes MODEL=<model-name>
-        make release-notes DRYRUN=1
-
-    The optional `MODEL` variable overrides the configured LLM model
-    for this invocation. Run `cmb models` to list available models.
-
-    Set `DRYRUN=1` to prepare the release artifacts without submitting a 
-    request to the LLM.
-
-    The target invokes `cmb release-notes`, using
-    `.prompts/release-notes.prompt` to prepare the request. The prompt
-    can be customized to follow the project's release documentation
-    conventions.
-
-    The `change-log` target generates a separate, file-oriented
-    engineering record. Use `release-notes` to produce the
-    developer-facing description of a release.
-
-    See ["LLM Commands"](#llm-commands) for the `release-notes` command.
 
 - `make clean`
 
@@ -1668,28 +1639,6 @@ If you want to generate `README.md` from a custom source, create a
 
         cmb -m My::Module install
 
-- change-log
-
-    Generates a draft ChangeLog entry for a release using the LLM.
-    The command uses the release artifacts produced by
-    `make release-notes`, including the Git status, diffs,
-    file inventory, and distribution tarball.
-
-        cmb change-log
-        cmb change-log <version>
-
-    The generated entry is written to `ChangeLog-VERSION.tmp`
-    in the current directory. An existing output file is not
-    overwritten.
-
-    The command uses `.prompts/change-log.prompt`, which may be
-    customized to follow the project's established ChangeLog format.
-
-    The project's `ChangeLog` is not modified. Review the generated
-    entry and incorporate it manually.
-
-    See ["THE PROJECT MAKEFILE"](#the-project-makefile) for the `make change-log` target.
-
 - create-config
 
     Outputs a stub configuration file to STDOUT. Create and edit a new
@@ -1721,7 +1670,7 @@ If you want to generate `README.md` from a custom source, create a
         cmb dist-file distribution-name filename
 
     Copies a distribution file to STDOUT. Searches the root and `share/`
-    directories of the distribution for file. Throws and exception if
+    directories of the distribution for file. Throws an exception if
     either the file is not found or the distribution is invalid.
 
     Example:
@@ -1886,7 +1835,7 @@ If you want to generate `README.md` from a custom source, create a
     with values drawn from the environment (or from a `--vars-file`). This
     is the mechanism the generated `Makefile` uses to turn `.pm.in` and
     `.pl.in` sources into their built `.pm`/`.pl` counterparts -- for
-    example filling `2.5.0` from the `VERSION` file or
+    example filling `2.5.1` from the `VERSION` file or
     `@BUILD_DATE@` at build time.
 
     A placeholder is required to have a value only when it appears in live
@@ -1907,157 +1856,7 @@ If you want to generate `README.md` from a custom source, create a
 
     See ["`--vars-file`"](#vars-file) and ["`--strict, --no-strict`"](#strict-no-strict).
 
-## LLM Commands
-
-LLM commands use prompt files installed as needed in the `.prompts/`
-directory. You can customize each of these prior to executing a
-command.
-
-    .prompts/change-log.prompt
-    .prompts/code-review.prompt
-    .prompts/pod-review.prompt
-    .prompts/release-notes.prompt
-
-### Anthropic API Key
-
-The following commands require [LLM::API](https://metacpan.org/pod/LLM%3A%3AAPI) to be installed and a valid
-Anthropic API key. Set it in the environment before running any LLM command:
-
-    export LLM_API_KEY=$(cat ~/.ssh/anthropic-api-key)
-
-The key is deleted from the environment immediately after being read and
-is never passed to child processes. See [CPAN::Maker::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3AConfigReader) for
-the `llm-api-key-helper` option which avoids exposing the key in shell
-history entirely.
-
-_SECURITY NOTE: Never pass your API key on the command line where it
-would be visible in shell history and process listings._
-
-### Commands
-
-- code-review
-
-    Submits a Perl module or script to the LLM for a code review. POD is
-    automatically stripped before submission so token costs reflect code
-    only. The review is written as a JSON file to the current directory.
-
-        cmb code-review [options] lib/My/Module.pm
-
-    The review file is named:
-
-        <module>-review-<timestamp>.code
-
-    A token usage summary is printed to stderr after the review completes.
-
-    If a review has been completed at least once the annotated review file
-    is automatically sent with your code to re-focus the review. You must
-    annotate the review file before resubmitting by running the
-    `annotate` command and marking each finding with a valid
-    disposition. See ["THE REVIEW WORKFLOW"](#the-review-workflow) for details.
-
-    Options specific to code-review:
-
-        --prompt|-p PATH          path to a custom review prompt file
-        --prompt-profile|-P NAME  additive prompt profile (repeatable)
-        --context|-C PATH         context file to submit alongside the review (repeatable)
-
-    _Note: The prompt profile list and the context file list are written
-    to the review output file. On subsequent runs these will be read from
-    the review. You do not need to provide them unless you want to update
-    their values._
-
-- annotate
-
-    Applies disposition tags to findings in the latest review file and
-    displays the current annotation state. Must be run from a project
-    directory (one containing `.includes/`).
-
-        cmb annotate [options] lib/My/Module.pm
-
-    Without options, displays the current annotation state of the latest
-    review file. With `-a` options, applies the specified dispositions
-    before displaying.
-
-        cmb annotate lib/My/Module.pm
-        cmb annotate -a 1:wrong -a 2:reject lib/My/Module.pm
-
-    Options:
-
-        --annotate|-a N:DISPOSITION    apply disposition to finding N (repeatable)
-        --auto-annotate|-A             annotate and immediately submit the next review
-        --finalize-annotations|-F      create versioned release artifact
-
-    Valid dispositions are `accept`, `reject`, `wrong`,
-    `wrong-reconsider`, `defer`, and `confirmed` (case
-    insensitive). See ["THE REVIEW WORKFLOW"](#the-review-workflow) for a description of each.
-
-- pod-finding
-
-        cmb pod-finding lib/CPAN/Maker/Bootstrapper.pm
-
-    Run this after a `pod-review` command to display a table of findings.
-
-- pod-review
-
-    Submits a Perl module or script to the LLM for a documentation review.
-    The full file including code is submitted so the LLM can check
-    consistency between implementation and documentation.  If no POD
-    exists, the LLM generates complete POD documentation suitable for
-    placement after `__END__`.
-
-        cmb pod-review lib/My/Module.pm
-
-    The review file is named:
-
-        <module>-review-<timestamp>.pod
-
-- release-notes
-
-    Generates release notes for a given version using the LLM. Requires
-    the release artifacts produced by `make release-notes`:
-
-        release-<version>.diffs
-        release-<version>.lst
-        release-<version>.status
-        release-<version>.tar.gz
-
-        cmb release-notes <version>
-
-    The generated release notes are written to
-    `release-notes-<version>.md`.  Binary files are automatically
-    excluded. Use `--max-diff-files` to cap token consumption on large
-    distributions (default: 50, 0 = unlimited).
-
-- code-finding
-
-    Generates a table with the complete details of a finding.
-
-        cmb code-finding lib/My/Module.pm 1
-
-- show-defaults
-
-    Prints the resolved default option values to STDOUT after applying
-    configuration-file values and runtime defaults.
-
-- update-annotations
-
-        cmb update-annotations file
-
-    Applies human-curated annotations to the most recent code review for
-    `file`. On first run it generates an `.annotate` file alongside the
-    review for you to edit; re-run it to apply your edited annotations back
-    into the review. Pairs with `code-review`/`annotate` in the review
-    workflow.
-
 # OPTIONS
-
-- `--annotate|-a` N:DISPOSITION
-
-    See ["THE REVIEW WORKFLOW"](#the-review-workflow)
-
-- `--auto-annotate|-A`
-
-    See ["THE REVIEW WORKFLOW"](#the-review-workflow)
 
 - `--basedir|-b` DIR
 
@@ -2084,32 +1883,19 @@ would be visible in shell history and process listings._
     For `import`, displays the planned file mappings without creating
     the project.
 
-    For `change-log` and `release-notes`, generates and validates the
-    release artifacts without submitting a request to the LLM.
-
-    For `pod-review` and `code-review`, displays a pre-submission token
-    and cost estimate without submitting the review.
-
 - `--config|-c` configuration file
 
-    The path to a `.ini` file that contains configuration information
-    used to scaffold your project.
+    Explicitly selects an INI-format configuration file, overriding
+    `CPAN_MAKER_CONFIG` and automatic configuration discovery.
 
-    default: ~/.gitconfig
-
-- `--context|-C` PATH
-
-    One or more files to submit with your code review file that provide
-    additional context for the LLM during the review.
+    See ["new" in CPAN::Maker::Bootstrapper::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3ABootstrapper%3A%3AConfigReader#new) for the
+    configuration file discovery order.
 
 - `--email|-e` EMAIL
 
-    Override the author email. Defaults to `user.email` from your global
-    git config.
-
-- `--finalize-annotations|-F`
-
-    See ["THE REVIEW WORKFLOW"](#the-review-workflow)
+    Override the author email. Defaults to `user.email` from the
+    configuration file, your local `.git/config` or the global git
+    configuration.
 
 - `--force|-f`
 
@@ -2119,7 +1905,8 @@ would be visible in shell history and process listings._
 - `--github-user|-g` USER
 
     Override the GitHub username used to construct repository URLs in
-    `buildspec.yml`. Defaults to `user.github` from your global git config.
+    `buildspec.yml`. Defaults to `user.github` from your configuration
+    file, your local `.git/config` or the global git configuration.
 
 - `--import|-I` path
 
@@ -2157,38 +1944,6 @@ would be visible in shell history and process listings._
 
     _Note: `--installdir` overrides `--basedir`_.
 
-- `--max-diff-files` LIMIT
-
-    The maximum number of changed files included in the release artifact
-    that may be uploaded to the LLM when generating release notes. Set to
-    `0` for no limit.
-
-    default: 50
-
-- `--max-tokens|-t` TOKENS
-
-    Maximum number of tokens the LLM may return in a single response.
-    Higher values reduce the risk of truncated reviews on large files.
-
-    default: 4096 (set by [LLM::API](https://metacpan.org/pod/LLM%3A%3AAPI))
-
-- `--model|-M` MODEL
-
-    Specifies the model id to use for LLM commands.
-
-    For `pod-review` the default model is `claude-haiku-4-5-20251001`.
-
-    For `code-review` the default model is `claude-sonnet-4-6`.
-
-    The Haiku model tends to be better at summarizing documentation and
-    avoiding unnecessary analysis around edge cases that contribute to
-    noise.
-
-    _Caution: Both models try hard to find issues to the point that you
-    will almost never get a clean run when asking for a POD review. When
-    your POD is complete, accurate and usable it's good enough. Avoid
-    shaving the yak!_
-
 - `--module|-m` MODULE
 
     The Perl module name for the new project, e.g. `My::New::Module`.
@@ -2197,23 +1952,6 @@ would be visible in shell history and process listings._
 
     You may omit this option when the module name can be determined from
     a custom stub file or from the project directory name.
-
-- `--prompt|-p` PATH
-
-    Path to a text file that will be used to prompt the LLM for a code or pod review.
-
-    defaults:
-
-        pod  => .prompts/pod-review.prompt
-        code => .prompts/code-review.prompt
-
-- `--prompt-profile|-P` NAME
-
-    The name of a prompt profile located in the `.prompts` directory. One
-    or more profile names may be specified. You need only provide the name
-    (e.g. cli-tool).
-
-    See ["PROMPT PROFILES"](#prompt-profiles)
 
 - `--resources|-r` github
 
@@ -2255,269 +1993,270 @@ would be visible in shell history and process listings._
 - `--username|-u` NAME
 
     Override the author name used in the module stub and `buildspec.yml`.
-    Defaults to `user.name` from your global git config.
+    Defaults to `user.name`, your local `.git/config` or the global git
+    configuration.
 
 - `--vars-file`
 
     The path to a file containing template variable values used by
     `resolve-vars`.
 
-# THE REVIEW WORKFLOW
+# EXTENSIONS
 
-`CPAN::Maker::Bootstrapper` allows you to implement a structured
-iterative code review workflow built around JSON review files and
-developer-applied disposition annotations. The workflow converges over
-several rounds, with each round potentially costing less as noise is
-suppressed and findings are resolved.
+`CPAN::Maker::Bootstrapper` supports optional extensions that introduce
+new `cmb` commands, command-line options, configuration settings, and
+Makefile targets.
 
-## Overview
+Extensions allow developers to add specialized workflows to their
+projects while retaining the build and release infrastructure provided
+by Bootstrapper. Each project can install and configure only the
+capabilities it needs.
 
-Each review round consists of three steps:
+An extension is packaged as a Perl distribution named
+`CPAN::Maker::Bootstrapper::Role::ExtensionName`. It provides a
+`role.yml` manifest, one or more Perl roles, and optionally a
+`role.mk` file containing Makefile recipes.
 
-- 1. Run a review
+Extensions must be installed before they can be added to a project.
 
-        cmb code-review --prompt-profile cli-tool lib/My/Module.pm
+Two extensions illustrate this approach:
 
-    The review is written to a timestamped `.code` file containing a JSON
-    object with `findings`, `confirmations`, and `deferred` arrays.
+- `CPAN::Maker::Bootstrapper::Role::LLM`
 
-- 2. Annotate the findings
+    Integrates large language models into development workflows, providing
+    commands for tasks such as source code review and documentation analysis.
 
-    An annotation is how you mark a finding with a disposition. The
-    dispositions are used by the LLM during the next review. See ["Dispositions"](#dispositions).
+- `CPAN::Maker::Bootstrapper::Role::PAUSEUpload`
 
-        cmb annotate lib/My/Module.pm
+    Integrates distribution uploads to PAUSE (the Perl Authors Upload Server)
+    into the project's release workflow.
 
-    This displays the current annotation state. Apply dispositions with
-    `-a` options:
+Both extensions are distributed independently of Bootstrapper and can
+be installed and enabled on a per-project basis.
 
-        cmb annotate -a 1:accept -a 2:wrong -a 3:reject -a 4:defer lib/My/Module.pm
+## Installing an Extension
 
-    You can annotate incrementally across multiple invocations. Each call
-    shows the updated state so you always know what remains.
+First, install the extension distribution using your preferred CPAN
+client. For example:
 
-    Alternatively, use `update-annotations` to maintain dispositions in an
-    annotation file rather than on the command line:
+    cpanm CPAN::Maker::Bootstrapper::Role::Example
 
-        cmb update-annotations lib/My/Module.pm
+Then, from the root of an existing Bootstrapper project, run:
 
-    The first invocation creates an `.annotate` file for editing. Run the
-    command again after editing the file to apply those dispositions to the
-    review.
+    make add-plugin PLUGIN=Example
 
-- 3. Submit the next review
+The `add-plugin` target invokes `cmb add-plugin`, installs the
+extension's project files, and runs `make update`.
 
-    Once all findings are annotated and code updated if necessary, run the
-    next review. The bootstrapper automatically finds and submits the
-    latest annotated review file with your updated code:
+The extension is registered beneath:
 
-        cmb code-review lib/My/Module.pm
+    .roles/CPAN-Maker-Bootstrapper-Role-Example/
 
-    Alternatively, use `--auto-annotate|-A` with the `annotate` command
-    to annotate and immediately resubmit in one step:
+The directory contains a copy of the extension's `role.yml` manifest
+and, when supplied, its `role.mk` file.
 
-        cmb annotate -a 1:wrong -a 2:reject --auto-annotate \
-          lib/My/Module.pm
+The extension's Perl modules remain installed in the Perl environment;
+they are not copied into the project.
 
-    The LLM will honor all dispositions from the prior round, confirm
-    fixes marked `ACCEPT`, carry forward `DEFER` items, and suppress
-    `REJECT` and `WRONG` findings. New findings appear without noise
-    from settled questions.
+If the extension is already registered, `add-plugin` refuses to
+overwrite it. To replace the project-local extension files, use:
 
-## Dry Run Mode
+    make add-plugin PLUGIN=Example FORCE=1
 
-Before the prompt and code are submitted for review, the script
-displays estimated token usage and cost. The input token count is
-obtained from the model's token-counting API using the message that
-will actually be submitted, so the input count is accurate. The
-output token count, and therefore the final cost, is an estimate.
+The existing files are backed up during installation and restored if
+validation fails.
 
-To stop before submitting the review, use `--dry-run`. The command
-will abort immediately before the message is sent to the LLM.
+The project-local `.roles/` directory should be committed to version
+control so that other developers receive the same extension
+registration when checking out the project.
 
-## Dispositions
+Those developers must also install the corresponding Perl extension
+distribution.
 
-Each finding in the annotations file must be given one of the
-dispositions described below before the next review can be
-submitted. The prompt sent to the LLM is designed around these
-dispositions. This helps successive reviews converge by carrying forward the
-developer's decisions from earlier rounds.
+## Extension Components
 
-- ACCEPT
+An extension can provide two complementary forms of functionality:
+commands executed by `cmb` and Makefile targets executed by `make`.
 
-    The finding is valid and has been fixed. On the next review the LLM
-    will confirm the fix is present. If the fix is not found the finding
-    will be re-raised.
+### `role.yml`
 
-- REJECT
+The `role.yml` manifest is required. It declares the Perl roles and
+commands supplied by the extension, along with any option specifications
+and default option values.
 
-    The finding has been reviewed and dismissed as inapplicable to this
-    codebase or context. It will not be raised again in subsequent reviews.
+The manifest is loaded by `CLI::Simple`, which integrates the
+extension's commands and options with those provided by
+`CPAN::Maker::Bootstrapper`.
 
-- WRONG
+When an extension is added to a project, `add-plugin` verifies that
+`role.yml` exists and that its declared roles can be loaded.
 
-    The finding was based on faulty reasoning. The code is correct. The
-    finding will not be re-raised. Use this when the LLM has misread the
-    control flow, misunderstood the design intent, or applied an
-    inappropriate threat model.
+### Perl Roles
 
-- WRONG-RECONSIDER
+Extension functionality is implemented in Perl roles composed using
+`Role::Tiny`.
 
-    Applied automatically at finalization to all findings marked WRONG.
-    On the first review of the next version the LLM will re-examine the
-    specific function and code excerpt carefully. If the prior analysis
-    was still incorrect the finding reverts to WRONG. If the code has
-    changed and the finding is now valid it is raised as a new finding.
-    If the model understands specifically why its prior reasoning was
-    wrong it may mark the finding CONFIRMED.
+These roles are installed as part of the extension distribution.
+`CLI::Simple` composes the roles associated with the selected command,
+rather than loading every extension role for every invocation.
 
-- DEFER
+This allows extensions to introduce dependencies that are needed only
+when their commands are executed.
 
-    The finding is known and acknowledged but not yet addressed. It is
-    carried forward in the `deferred` array of each subsequent review
-    without being treated as a new finding.
+### `role.mk`
 
-- CONFIRMED
+The optional `role.mk` file supplies GNU Make recipes.
 
-    Used for logic confirmations rather than defects. Marks that both the
-    LLM and the developer agree the code is correct.
+The generated project Makefile includes extension Makefiles using:
 
-## Diminishing Returns and When to Stop
+    -include $(wildcard .roles/*/role.mk)
 
-Run the `annotate` command after each review submission to view the
-findings. Each round tends to surface smaller and more obscure issues
-as obvious findings are resolved. Despite some fairly aggressive
-attempts to create prompts that prevent trivial or obscure findings
-you should stop when you see these signals:
+Consequently, targets defined in an extension's `role.mk` become
+available to the project after the extension has been registered.
 
-- All new findings are LOW severity.
-- The LLM is re-raising findings already marked WRONG or REJECT,
-possibly rephrased (LLMs can and do make mistakes!).
-- New findings describe edge cases that cannot occur in normal usage.
+An extension that provides only `cmb` commands does not need a
+`role.mk` file.
 
-When all findings have dispositions and no new substantive issues
-appear, the review should be considered complete.
+Run:
 
-## The Release Artifact
+    make help
 
-When you are satisfied with the review state, finalize it with
-`--finalize-annotations`:
+to discover documented Makefile targets, including those contributed
+by extensions.
 
-    cmb annotate --finalize-annotations -a 1:wrong -a 2:reject lib/My/Module.pm
+## Participating in Project Updates
 
-This applies any remaining dispositions, validates that all findings
-are annotated, reads the version from the `VERSION` file, and writes
-the versioned release artifact:
+Extensions can participate in the project update lifecycle by adding
+recipes to the `pre-update` and `post-update` targets.
 
-    CPAN-Maker-Bootstrapper-1.1.0-REVIEW.json
+The `make update` operation executes these phases in order:
 
-This file serves as a code review certification for the release - a
-machine-readable record of every finding examined, every logic
-confirmation made, and every disposition applied before the version
-was published. Commit it to the repository alongside your ChangeLog.
+- 1. `pre-update`
 
-All findings marked WRONG are automatically converted to
-WRONG-RECONSIDER in the release artifact, prompting careful
-re-examination on the first review of the next version rather
-than permanent suppression.
+    Runs extension or project recipes before Bootstrapper-managed files
+    are refreshed.
 
-## Cost Management
+- 2. Update managed files
 
-Review cost depends on the selected model, source size, prompt
-profiles, and number of findings. Costs generally decrease over
-successive rounds as the model spends fewer output tokens
-re-explaining suppressed findings.
+    Refreshes the project build infrastructure from the installed
+    `CPAN::Maker::Bootstrapper` distribution.
 
-Use your own prompt profiles (`--prompt-profile`) to suppress entire
-classes of noise before they reach the annotation file. A well-tuned
-profile for your application type is the highest-leverage cost
-reduction available.
+- 3. `post-update`
 
-## See Also
+    Runs extension or project recipes after the managed files have been
+    updated.
 
-["LLM Commands"](#llm-commands), ["PROMPT PROFILES"](#prompt-profiles), [CPAN::Maker::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3AConfigReader)
+An extension may augment either hook using GNU Make double-colon
+rules in its `role.mk`:
 
-# PROMPT PROFILES
+    pre-update::
+            @echo "Preparing extension update"
 
-Prompt profiles are additive prompt fragments that customize the review
-behavior for specific application types. They are appended to the base
-review prompt before submission and are intended to focus the review on
-relevant concerns while suppressing noise that does not apply to the
-target context.
+    post-update::
+            @echo "Updating extension files"
 
-_NOTE: Prompts count toward your input token count. Be succinct and
-accurate._
+Double-colon rules allow multiple extensions and the project itself
+to contribute recipes to the same targets without replacing one
+another's implementations.
 
-## Using Profiles
+Extensions are responsible for managing their own project files.
+The presence of a `role.mk` file does not automatically make those
+files part of Bootstrapper's managed-file inventory.
 
-Pass one or more profiles using the `--prompt-profile` option:
+An extension can use `post-update` to install or refresh files
+needed by its commands or Makefile targets.
 
-    cmb code-review --prompt-profile cli-tool MyModule.pm
+## Commands and Roles
 
-Multiple profiles may be combined:
+Extension commands are registered through their `role.yml`
+manifests. When `cmb` recognizes a command, `CLI::Simple` composes
+the roles associated with that command using `Role::Tiny`.
 
-    cmb code-review --prompt-profile cli-tool --prompt-profile security MyModule.pm
+Option specifications are registered globally across all loaded
+manifests. This is necessary because command-line arguments must be
+parsed before the selected command and its roles can be determined.
 
-Profiles are resolved from the `.prompts/` directory in the current
-project. A profile named `cli-tool` resolves to
-`.prompts/cli-tool.prompt`. Add project-specific prompt profiles to
-`.prompts/` and commit them with your project.
+Extension authors should prefix option names with an identifier
+associated with their extension to avoid collisions with core options
+or options provided by other extensions.
 
-### Built-in Profiles
+For example, an extension named `example` might declare:
 
-The following profile is installed with the distribution:
+    example-model=s
+    example-max-items=i
 
-- cli-tool
+Option names and aliases must be unique across all registered
+manifests. The prefix is a convention, not a requirement imposed by
+`CLI::Simple`.
 
-    Appropriate for single-user developer CLI tools. Suppresses security
-    findings that assume a multi-user or hostile environment, TOCTOU race
-    condition findings that assume concurrent invocation, and concerns about
-    `qx{}` or `system()` calls where input originates from the user's own
-    configuration. Also assumes `perlcritic` and `perltidy` are enforced
-    in the development environment.
+## Extension Configuration
 
-### Creating Custom Profiles
+Extensions may define configuration settings in the Bootstrapper
+configuration file. Each extension should use a separate INI
+section corresponding to its option prefix.
 
-A profile is a plain text file in `.prompts/` containing additional
-prompt instructions, one per line. Lines beginning with `#` are
-treated as comments and stripped before submission. Profile
-instructions are appended verbatim to the base review prompt.  The
-built-in profiles use one instruction per line, typically prefixed
-with `-`.
+For example:
 
-Example `.prompts/security.prompt`:
+    [example]
+    model = standard
+    max-items = 25
+    identifier = "00123"
+    enabled = true
 
-    # security profile - add to any review where input handling matters
-    - Treat all caller-supplied input as untrusted regardless of source.
-    - Flag any use of eval, system, or exec that incorporates external data.
-    - Flag missing taint checks on data used in file or system operations.
+Bootstrapper combines the section name and configuration key to
+identify the corresponding option accessor, replacing hyphens with
+underscores.
 
-### Additional Profile Ideas
+The settings above map to the following accessors:
 
-- library
+    get_example_model()       set_example_model()
+    get_example_max_items()   set_example_max_items()
+    get_example_identifier()  set_example_identifier()
+    get_example_enabled()     set_example_enabled()
 
-    Focuses on API contract correctness and caller assumptions. Appropriate
-    for CPAN distributions intended for use by unknown callers.
+Configuration values are applied only when the corresponding setter
+exists and the option has not already been defined. Unrecognized
+settings are ignored.
 
-- web-application
+Numeric values are converted to numbers, and the values `true` and
+`false` are converted to boolean values. Numeric-looking strings can
+be preserved by enclosing them in double quotes, as illustrated by
+the `identifier` setting above. The surrounding quotes are removed
+before the value is assigned.
 
-    Treats external input as untrusted. Flags injection risks, authentication
-    gaps, and session handling concerns.
+The existing `[cpan-maker]` section is handled separately to preserve
+its established configuration names and behavior.
 
-- mod-perl-handler
+## Option Precedence
 
-    Addresses Apache lifecycle concerns including global state, startup versus
-    request time initialization, and child process behavior.
+Bootstrapper resolves option values according to the following
+precedence, from highest to lowest:
 
-- lambda-function
+- 1. Command-line options
 
-    Focuses on cold start performance, statelessness, and environment variable
-    handling appropriate for AWS Lambda deployments.
+    Values explicitly supplied on the command line take precedence over
+    configuration settings and defaults.
 
-Community contributions of additional profiles are welcome. See
-[https://github.com/rlauer6/CPAN-Maker-Bootstrapper/issues](https://github.com/rlauer6/CPAN-Maker-Bootstrapper/issues).
+- 2. Configuration file
 
-# EXTENDING THE BUILD SYSTEM
+    Values defined in Bootstrapper's configuration file are applied when the corresponding
+    option has not already been defined.
+
+- 3. Manifest defaults
+
+    Default values declared in `role.yml` are applied to options that
+    remain undefined after initialization.
+
+This precedence follows the `CLI::Simple` initialization lifecycle.
+Bootstrapper loads configuration settings during `init()`, after
+command-line parsing. `CLI::Simple` subsequently applies manifest
+defaults only to options that remain undefined.
+
+Consequently, extension authors can provide sensible defaults in
+`role.yml` while allowing projects to override those defaults through
+Bootstrapper's configuration file.
+
+# CUSTOM BUILD TARGETS
 
 The installed `Makefile` and files under `.includes/` are managed by
 `CPAN::Maker::Bootstrapper`. They are intentionally write-protected and
@@ -2532,14 +2271,11 @@ The managed include files live in the `.includes/` directory,
 where they are write-protected and clearly separated from project
 files. The `Makefile` includes them automatically:
 
-    include .includes/publish.mk
-    include .includes/change-log.mk
     include .includes/bootstrap.mk
     include .includes/perl.mk
     include .includes/local.mk
     include .includes/help.mk
     include .includes/version.mk
-    include .includes/release-notes.mk
     include .includes/git.mk
     include .includes/update.mk
     include .includes/upgrade.mk
@@ -2814,7 +2550,6 @@ The following targets manage the lifecycle of the build system itself:
         .includes/update.mk
         .includes/upgrade.mk
         .includes/version.mk
-        .includes/release-notes.mk
         .includes/bash-completion.mk
         .includes/modulino.mk
         .includes/publish.mk
@@ -3392,9 +3127,9 @@ multi-mirror support (see ["build-mirrors"](#build-mirrors))._
 - git
 
     `git` is used throughout the framework. `make git` initializes the
-    repository and creates the initial commit, and the bootstrapper reads
-    user identity and related defaults from `.gitconfig` when no separate
-    configuration file is supplied.
+    repository and creates the initial commit, and the Bootstrapper reads
+    user identity and related defaults from your configuration file,
+    your local `.git/config` or the global `git` configuration.
 
 # FAQ
 
@@ -3455,6 +3190,35 @@ You can also disable individual features:
     make SCAN=OFF             # skip distribution dependency scanning only
     make LINT=OFF             # skip all linting only
     make SYNTAX_CHECKING=OFF  # skip syntax checking only
+
+## Why should I commit config.mk to my project?
+
+The bootstrapper generates `build-config.mk` using the tools
+and configuration available in the current build environment.
+This provides a usable starting configuration without requiring
+the developer to specify every build setting.
+
+However, discovered settings may differ between machines.
+For example, developers may have different perltidy or
+perlcritic configuration files, or different tools installed.
+
+`config.mk` allows the project to override these discovered
+settings and establish a consistent build policy.
+
+For example:
+
+    SCAN = ON
+    LINT = ON
+    SYNTAX_CHECKING = ON
+    PERLTIDYRC = .perltidyrc
+    PERLCRITICRC = .perlcriticrc
+
+Commit `config.mk` and any referenced configuration files
+to source control so that developers and CI use the same
+project-defined settings.
+
+`build-config.mk`, on the other hand, is generated for the
+current environment and should not be committed.
 
 ## How do I add a new module or script to the project?
 
@@ -3651,45 +3415,6 @@ a script if it uses the modulino pattern:
 
 See ["MODULINOS"](#modulinos) for full details.
 
-## What is `make release-notes` used for?
-
-`make release-notes` generates four artifacts comparing the current
-working state of your repository against the previous git tag:
-
-- `release-<version>.diffs` - a unified diff of all
-changed files
-- `release-<version>.lst` - a list of added, modified,
-and removed files
-- `release-<version>.status` - Git name-status output
-classifying added, modified, deleted, and renamed files
-- `release-<version>.tar.gz` - a tarball containing
-only the changed files
-
-These are primarily useful for generating release notes and
-changelogs, and for submitting targeted patches. Run it after bumping
-the version with `make release`, `make minor`, or `make major` and
-before creating your final distribution.
-
-    make minor
-    make release-notes
-    # review release-1.1.0.diffs
-    make
-
-The artifacts are all the clues needed for LLMs to produce accurate
-and well written release notes for your project.
-
-To generate the release artifacts without submitting them to the LLM,
-use:
-
-    make release-notes DRYRUN=1
-
-This is useful for inspecting or debugging the release evidence before
-requesting generated release notes. The `.diffs`, `.lst`, `.status`,
-and `.tar.gz` artifacts are produced normally, but no LLM request is
-made.
-
-The release artifacts are cleaned up by `make clean`.
-
 ## Can I distribute the POD in my modules separately?
 
 When you package your CPAN distribution you can strip the pod from
@@ -3780,11 +3505,8 @@ fork-and-PR workflow.
 [CLI::Simple](https://metacpan.org/pod/CLI%3A%3ASimple) - the CLI framework used by the bootstrapper itself and
 optionally by generated CLI module stubs
 
-[CPAN::Maker::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3AConfigReader) - the git config reader bundled with this
-distribution, available for use in your own
-tools.
-
-[LLM::API](https://metacpan.org/pod/LLM%3A%3AAPI) - client interface to Anthropic's Claude API
+[CPAN::Maker::Bootstrapper::ConfigReader](https://metacpan.org/pod/CPAN%3A%3AMaker%3A%3ABootstrapper%3A%3AConfigReader) - the config reader bundled
+with this distribution, available for use in your own tools.
 
 [Module::ScanDeps::Static](https://metacpan.org/pod/Module%3A%3AScanDeps%3A%3AStatic) - the static scanner used for CPAN
 dependency discovery and for inter-module build-order discovery
@@ -3804,7 +3526,7 @@ features are used.
 
 # VERSION
 
-This documentation refers to version 2.5.0
+This documentation refers to version 2.5.1
 
 # AUTHOR
 

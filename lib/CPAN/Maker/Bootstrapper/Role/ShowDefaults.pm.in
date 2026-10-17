@@ -46,17 +46,15 @@ sub _resolve_defaults {
   my $reader = $self->get_reader;
 
   my @config = (
-    [ config_source      => $self->get_config ],
-    [ basedir            => $self->get_basedir ],
-    [ installdir         => $installdir ],
-    [ username           => $self->get_username ],
-    [ email              => $self->get_email ],
-    [ github_user        => $self->get_github_user ],
-    [ resources          => $self->get_resources ],
-    [ color              => $self->get_color ? 'on' : 'off' ],
-    [ llm_api_key_helper => $self->get_llm_api_key_helper ],
-    [ max_tokens         => $self->get_max_tokens ],
-    [ max_diff_files     => $self->get_max_diff_files ],
+    [ config_source  => $self->get_config ],
+    [ basedir        => $self->get_basedir ],
+    [ installdir     => $installdir ],
+    [ username       => $self->get_username ],
+    [ email          => $self->get_email ],
+    [ github_user    => $self->get_github_user ],
+    [ resources      => $self->get_resources ],
+    [ color          => $self->get_color ? 'on' : 'off' ],
+    [ max_diff_files => $self->get_max_diff_files ],
   );
 
   my $syntax_checking = choose {

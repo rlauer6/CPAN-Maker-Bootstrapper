@@ -12,11 +12,9 @@ File::ShareDir 1.118
 File::Which 1.27
 HTTP::Tiny 0
 IO::Interactive 1.027
-IO::Scalar 2.113
 JSON 4.10
 Module::Metadata 1.000038
 Module::ScanDeps::Static 1.9.3
-Pod::Extract 1.0.2
 Readonly 2.05
 Role::Tiny 2.002004
 Text::ASCIITable 0.22

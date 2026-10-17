@@ -1,9 +1,6 @@
 ---
 commands:
-  annotate:                 CPAN::Maker::Bootstrapper::Role::LLM::Annotator
-  change-log:               CPAN::Maker::Bootstrapper::Role::LLM::ChangeLog
-  code-finding:             CPAN::Maker::Bootstrapper::Role::LLM::Reviewer
-  code-review:              CPAN::Maker::Bootstrapper::Role::LLM::Reviewer
+  add-plugin:               CPAN::Maker::Bootstrapper::Role::AddPlugin
   create-build-config:      CPAN::Maker::Bootstrapper::Role::CreateBuildConfig
   create-config:            CPAN::Maker::Bootstrapper::Role::CreateConfig
   create-deps:              CPAN::Maker::Bootstrapper::Role::CreateDeps
@@ -15,17 +12,12 @@ commands:
   install:                  CPAN::Maker::Bootstrapper::Role::Installer
   import:                   CPAN::Maker::Bootstrapper::Role::Importer
   import-scaffold:          CPAN::Maker::Bootstrapper::Role::ScaffoldImporter
-  models:                   CPAN::Maker::Bootstrapper::Role::LLM::Models
   perlcritic:               CPAN::Maker::Bootstrapper::Role::PerlCritic
   perltidy:                 CPAN::Maker::Bootstrapper::Role::PerlTidy
-  pod-finding:              CPAN::Maker::Bootstrapper::Role::LLM::Reviewer
-  pod-review:               CPAN::Maker::Bootstrapper::Role::LLM::Reviewer
   provides:                 CPAN::Maker::Bootstrapper::Role::Provides
-  publish-to-cpan:          CPAN::Maker::Bootstrapper::Role::PAUSEUpload
   reconcile-deps:           CPAN::Maker::Bootstrapper::Role::ReconcileDeps
-  release-notes:            CPAN::Maker::Bootstrapper::Role::LLM::ReleaseNotes
   show-defaults:            CPAN::Maker::Bootstrapper::Role::ShowDefaults
-  update-annotations:       CPAN::Maker::Bootstrapper::Role::LLM::Annotator
+  uninstall:                CPAN::Maker::Bootstrapper::Role::Uninstall
   version:                  CPAN::Maker::Bootstrapper::Role::Version
 roles:
   deps-filter:              CPAN::Maker::Bootstrapper::Role::DepsFilter
@@ -46,8 +38,6 @@ options:
 - finalize-annotations|F
 - history!
 - max-diff-files=i
-- max-tokens|t=i
-- model|M=s
 - path-only
 - project-tarball
 - prompt|p=s
@@ -74,8 +64,6 @@ alias:
   options:
     dryrun: dry-run
 extra_options:
-  - llm
-  - llm_api_key_helper
   - dist_dir
   - import_file_listing
   - help_sections
